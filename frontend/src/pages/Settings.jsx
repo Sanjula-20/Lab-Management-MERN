@@ -238,6 +238,15 @@ export default function Settings() {
         }
     }, [isAuthenticated])
 
+    const handleRefreshStats = async () => {
+        setLoadingStats(true)
+        try {
+            await fetchSystemStats()
+        } finally {
+            setTimeout(() => setLoadingStats(false), 600)
+        }
+    }
+
     useEffect(() => {
         if (!isAuthenticated) {
             navigate('/login')
@@ -250,6 +259,17 @@ export default function Settings() {
         fetchSettings()
         fetchSystemStats()
     }, [isAuthenticated, user, navigate, fetchSettings, fetchSystemStats])
+
+    // Escape key handler to go back to previous state
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' || e.key === 'Esc') {
+                navigate(-1)
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [navigate])
 
     const saveSettings = async () => {
         setSaving(true)
@@ -350,10 +370,15 @@ export default function Settings() {
                             System Metrics
                         </h3>
                         <button
-                            onClick={fetchSystemStats}
-                            className="px-3 py-1 text-sm bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors"
+                            onClick={handleRefreshStats}
+                            disabled={loadingStats}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 text-sm bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors disabled:opacity-60 disabled:cursor-wait"
+                            title="Refresh Metrics"
                         >
-                            Refresh
+                            <svg className={`w-3.5 h-3.5 ${loadingStats ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            <span>{loadingStats ? 'Refreshing...' : 'Refresh'}</span>
                         </button>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

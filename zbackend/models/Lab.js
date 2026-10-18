@@ -20,6 +20,10 @@ const Lab = sequelize.define('Lab', {
         allowNull: false,
         defaultValue: 'cse'
     },
+    established_date: {
+        type: DataTypes.DATEONLY,
+        allowNull: true
+    },
     location: {
         type: DataTypes.STRING(255),
         allowNull: true
@@ -45,7 +49,8 @@ const Lab = sequelize.define('Lab', {
     },
     lab_seats: {
         type: DataTypes.INTEGER,
-        allowNull: true,
+        allowNull: false,
+        defaultValue: 30,
         validate: {
             min: 1,
             max: 500
@@ -55,6 +60,16 @@ const Lab = sequelize.define('Lab', {
         type: DataTypes.BOOLEAN,
         allowNull: false,
         defaultValue: true
+    },
+    in_charge_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: 'users',
+            key: 'id'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'SET NULL'
     },
     created_by: {
         type: DataTypes.INTEGER,
@@ -74,6 +89,7 @@ const Lab = sequelize.define('Lab', {
     indexes: [
         { fields: ['lab_type'] },
         { fields: ['is_active'] },
+        { fields: ['in_charge_id'] },
         { fields: ['created_by'] },
         { fields: ['location'] }
     ]

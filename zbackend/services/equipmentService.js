@@ -1,5 +1,5 @@
 // Equipment Service - Business Logic Layer
-const { Equipment, Lab, User, Booking } = require('../models');
+const { Equipment, Lab, User, Booking, Dealer } = require('../models');
 const { Op } = require('sequelize');
 const { createNotification } = require('../utils/notificationService');
 
@@ -107,6 +107,8 @@ class EquipmentService {
             whereClause[Op.or] = [
                 { name: { [Op.like]: `%${search}%` } },
                 { model: { [Op.like]: `%${search}%` } },
+                { brand: { [Op.like]: `%${search}%` } },
+                { dealer_name: { [Op.like]: `%${search}%` } },
                 { serial_number: { [Op.like]: `%${search}%` } },
                 { description: { [Op.like]: `%${search}%` } },
                 { manufacturer: { [Op.like]: `%${search}%` } }
@@ -128,6 +130,12 @@ class EquipmentService {
                     model: User,
                     as: 'creator',
                     attributes: ['id', 'name', 'email'],
+                    required: false
+                },
+                {
+                    model: Dealer,
+                    as: 'dealer',
+                    attributes: ['id', 'name', 'contact_person', 'email', 'phone', 'city'],
                     required: false
                 }
             ],
@@ -164,6 +172,12 @@ class EquipmentService {
                     as: 'creator',
                     attributes: ['id', 'name', 'email'],
                     required: false
+                },
+                {
+                    model: Dealer,
+                    as: 'dealer',
+                    attributes: ['id', 'name', 'contact_person', 'email', 'phone', 'city', 'address', 'gst_number'],
+                    required: false
                 }
             ]
         });
@@ -198,15 +212,29 @@ class EquipmentService {
             throw new Error('Equipment with this serial number already exists');
         }
 
+        const brandVal = equipmentData.brand?.trim() || equipmentData.manufacturer?.trim() || null;
+        const hardDiskVal = equipmentData.hard_disk?.trim() || equipmentData.storage?.trim() || null;
+        const gpuVal = equipmentData.gpu?.trim() || equipmentData.graphics_card?.trim() || null;
+
+        let dealerName = equipmentData.dealer_name?.trim() || null;
+        if (equipmentData.dealer_id && !dealerName) {
+            const { Dealer } = require('../models');
+            const dealerObj = await Dealer.findByPk(equipmentData.dealer_id);
+            if (dealerObj) dealerName = dealerObj.name;
+        }
+
         // Prepare equipment data
         const dataToCreate = {
             name: equipmentData.name.trim(),
             description: equipmentData.description?.trim() || null,
             serial_number: equipmentData.serial_number.trim(),
             model: equipmentData.model?.trim() || null,
-            manufacturer: equipmentData.manufacturer?.trim() || null,
+            brand: brandVal,
+            manufacturer: brandVal,
             category: equipmentData.category,
             lab_id: parseInt(equipmentData.lab_id),
+            dealer_id: equipmentData.dealer_id ? parseInt(equipmentData.dealer_id) : null,
+            dealer_name: dealerName,
             location_details: equipmentData.location_details?.trim() || null,
             status: equipmentData.status || 'available',
             condition_status: equipmentData.condition_status || 'good',
@@ -216,12 +244,15 @@ class EquipmentService {
             warranty_expiry: equipmentData.warranty_expiry || null,
             is_active: true,
             created_by: userId,
-            // Category-specific fields
-            processor: equipmentData.processor || null,
-            ram: equipmentData.ram || null,
-            storage: equipmentData.storage || null,
-            graphics_card: equipmentData.graphics_card || null,
-            operating_system: equipmentData.operating_system || null,
+            // Configuration & Category-specific fields
+            ram: equipmentData.ram?.trim() || null,
+            hard_disk: hardDiskVal,
+            gpu: gpuVal,
+            generation: equipmentData.generation?.trim() || null,
+            storage: hardDiskVal,
+            graphics_card: gpuVal,
+            processor: equipmentData.processor?.trim() || null,
+            operating_system: equipmentData.operating_system?.trim() || null,
             resolution: equipmentData.resolution || null,
             brightness: equipmentData.brightness || null,
             contrast_ratio: equipmentData.contrast_ratio || null,
@@ -301,6 +332,24 @@ class EquipmentService {
         }
 
         const dataToUpdate = { ...updateData };
+
+        if (dataToUpdate.brand !== undefined || dataToUpdate.manufacturer !== undefined) {
+            const b = dataToUpdate.brand?.trim() || dataToUpdate.manufacturer?.trim() || null;
+            dataToUpdate.brand = b;
+            dataToUpdate.manufacturer = b;
+        }
+
+        if (dataToUpdate.hard_disk !== undefined || dataToUpdate.storage !== undefined) {
+            const h = dataToUpdate.hard_disk?.trim() || dataToUpdate.storage?.trim() || null;
+            dataToUpdate.hard_disk = h;
+            dataToUpdate.storage = h;
+        }
+
+        if (dataToUpdate.gpu !== undefined || dataToUpdate.graphics_card !== undefined) {
+            const g = dataToUpdate.gpu?.trim() || dataToUpdate.graphics_card?.trim() || null;
+            dataToUpdate.gpu = g;
+            dataToUpdate.graphics_card = g;
+        }
 
         if (dataToUpdate.purchase_price !== undefined) {
             dataToUpdate.purchase_price = dataToUpdate.purchase_price ? parseFloat(dataToUpdate.purchase_price) : 0.00;

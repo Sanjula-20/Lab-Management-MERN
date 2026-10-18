@@ -34,6 +34,18 @@ export default function IntelligentChatbot() {
         }
     }, [isOpen]);
 
+    // Escape key handler to close chatbot
+    useEffect(() => {
+        if (!isOpen) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' || e.key === 'Esc') {
+                setIsOpen(false);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen]);
+
     const initializeChat = () => {
         const welcomeMessage = {
             id: Date.now(),

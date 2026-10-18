@@ -48,6 +48,17 @@ function EquipmentDetails() {
         fetchEquipment()
     }, [id, isAuthenticated, navigate])
 
+    // Escape key handler to go back to previous state
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' || e.key === 'Esc') {
+                navigate(-1)
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [navigate])
+
     if (loading) {
         return (
             <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -101,8 +112,12 @@ function EquipmentDetails() {
                                 <span className="capitalize">{equipment.category?.replace('_', ' ')}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="font-medium">Manufacturer:</span>
-                                <span>{equipment.manufacturer || 'Not specified'}</span>
+                                <span className="font-medium">Brand:</span>
+                                <span>{equipment.brand || equipment.manufacturer || 'Not specified'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="font-medium">Dealer:</span>
+                                <span>{equipment.dealer?.name || equipment.dealer_name || 'Not specified'}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span className="font-medium">Model:</span>
@@ -132,10 +147,6 @@ function EquipmentDetails() {
                                 <span className="font-medium">Laboratory:</span>
                                 <span>{equipment.lab?.name || 'Unassigned'}</span>
                             </div>
-                            <div className="flex justify-between">
-                                <span className="font-medium">Location Details:</span>
-                                <span>{equipment.location_details || 'Not specified'}</span>
-                            </div>
                             {equipment.description && (
                                 <div>
                                     <span className="font-medium">Description:</span>
@@ -147,32 +158,44 @@ function EquipmentDetails() {
 
                     {/* Technical Specifications */}
                     <div className="bg-white rounded shadow p-6">
-                        <h2 className="text-xl font-bold mb-4">Technical Specifications</h2>
+                        <h2 className="text-xl font-bold mb-4">Technical Specifications & Configuration</h2>
                         <div className="space-y-3">
+                            {/* Configuration Section */}
+                            {(equipment.ram || equipment.hard_disk || equipment.storage || equipment.gpu || equipment.graphics_card || equipment.generation) && (
+                                <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-3">
+                                    <h3 className="font-semibold text-blue-900 text-sm mb-2 flex items-center">
+                                        <svg className="w-4 h-4 mr-1 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                                        </svg>
+                                        Configuration
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-2 text-sm">
+                                        <div>
+                                            <span className="text-gray-500 block text-xs">RAM</span>
+                                            <span className="font-medium text-gray-800">{equipment.ram || 'Not specified'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-500 block text-xs">Hard Disk</span>
+                                            <span className="font-medium text-gray-800">{equipment.hard_disk || equipment.storage || 'Not specified'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-500 block text-xs">GPU</span>
+                                            <span className="font-medium text-gray-800">{equipment.gpu || equipment.graphics_card || 'Not specified'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-500 block text-xs">Generation</span>
+                                            <span className="font-medium text-gray-800">{equipment.generation || 'Not specified'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {equipment.category === 'computer' && (
                                 <>
                                     {equipment.processor && (
                                         <div className="flex justify-between">
                                             <span className="font-medium">Processor:</span>
                                             <span>{equipment.processor}</span>
-                                        </div>
-                                    )}
-                                    {equipment.ram && (
-                                        <div className="flex justify-between">
-                                            <span className="font-medium">RAM:</span>
-                                            <span>{equipment.ram}</span>
-                                        </div>
-                                    )}
-                                    {equipment.storage && (
-                                        <div className="flex justify-between">
-                                            <span className="font-medium">Storage:</span>
-                                            <span>{equipment.storage}</span>
-                                        </div>
-                                    )}
-                                    {equipment.graphics_card && (
-                                        <div className="flex justify-between">
-                                            <span className="font-medium">Graphics Card:</span>
-                                            <span>{equipment.graphics_card}</span>
                                         </div>
                                     )}
                                     {equipment.operating_system && (

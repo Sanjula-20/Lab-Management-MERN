@@ -1,3 +1,4 @@
+// Server entry point - Lab Management System
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
@@ -78,6 +79,8 @@ const routes = [
     { name: 'Roles', path: '/api/roles', file: './routes/roles' },
     { name: 'Departments', path: '/api/departments', file: './routes/departments' },
     { name: 'Equipment', path: '/api/equipment', file: './routes/equipment' },
+    { name: 'Equipment Categories', path: '/api/equipment-categories', file: './routes/equipmentCategories' },
+    { name: 'Dealers', path: '/api/dealers', file: './routes/dealers' },
     { name: 'Labs', path: '/api/labs', file: './routes/labs' },
     { name: 'Bookings', path: '/api/bookings', file: './routes/bookings' },
     { name: 'Maintenance', path: '/api/maintenance', file: './routes/maintenance' },

@@ -41,7 +41,41 @@ export const getNavigationItems = (user, stats = {}) => {
             ),
             path: '/equipment',
             show: true,
-            badge: stats.totalEquipment || null
+            badge: stats.totalEquipment || null,
+            children: [
+                {
+                    id: 'equipment-inventory',
+                    title: 'All Equipment',
+                    path: '/equipment',
+                    icon: (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                        </svg>
+                    )
+                },
+                {
+                    id: 'equipment-categories',
+                    title: 'Category Master',
+                    path: '/equipment-categories',
+                    badge: stats.totalCategories || null,
+                    icon: (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                    )
+                },
+                {
+                    id: 'dealers',
+                    title: 'Dealer Master',
+                    path: '/dealers',
+                    badge: stats.totalDealers || null,
+                    icon: (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                    )
+                }
+            ]
         },
         {
             id: 'bookings',
@@ -165,7 +199,44 @@ export function Sidebar({ sidebarCollapsed, setSidebarCollapsed, currentPath, st
     const navigate = useNavigate()
     const location = useLocation()
 
+    // Gracefully handle undefined sidebarCollapsed prop
+    const [localCollapsed, setLocalCollapsed] = useState(false)
+    const isCollapsed = sidebarCollapsed !== undefined ? sidebarCollapsed : localCollapsed
+    const handleToggleCollapse = () => {
+        if (setSidebarCollapsed) {
+            setSidebarCollapsed(!sidebarCollapsed)
+        } else {
+            setLocalCollapsed(!localCollapsed)
+        }
+    }
+
     const navigationItems = getNavigationItems(user, stats)
+
+    // State for open/close submenus (Equipment defaults open if on /equipment, /equipment-categories, or /dealers)
+    const [openSubmenus, setOpenSubmenus] = useState(() => {
+        const initial = {}
+        navigationItems.forEach(item => {
+            if (item.children) {
+                const matches = item.children.some(c => location.pathname === c.path || (c.path !== '/' && location.pathname.startsWith(c.path)))
+                if (matches || location.pathname === item.path) {
+                    initial[item.id] = true
+                }
+            }
+        })
+        return initial
+    })
+
+    // Auto-expand menu when navigating to any child route
+    useEffect(() => {
+        navigationItems.forEach(item => {
+            if (item.children) {
+                const matches = item.children.some(c => location.pathname === c.path || (c.path !== '/' && location.pathname.startsWith(c.path)))
+                if (matches || location.pathname === item.path) {
+                    setOpenSubmenus(prev => ({ ...prev, [item.id]: true }))
+                }
+            }
+        })
+    }, [location.pathname])
 
     const handleNavigation = (path) => {
         navigate(path)
@@ -182,70 +253,178 @@ export function Sidebar({ sidebarCollapsed, setSidebarCollapsed, currentPath, st
     }
 
     return (
-        <div className={`fixed inset-y-0 left-0 z-50 ${sidebarCollapsed ? 'w-16' : 'w-64'} bg-white shadow-xl border-r border-gray-200 transition-all duration-300`}>
+        <div className={`fixed inset-y-0 left-0 z-50 ${isCollapsed ? 'w-16' : 'w-64'} bg-white shadow-xl border-r border-gray-200 transition-all duration-300 flex flex-col`}>
             {/* Sidebar Header */}
-            <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-purple-600">
-                {!sidebarCollapsed && (
+            <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-purple-600 shrink-0">
+                {!isCollapsed && (
                     <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-white rounded-lg overflow-hidden p-1">
+                        <div className="w-8 h-8 bg-white rounded-lg overflow-hidden p-1 shadow-2xs">
                             <img 
                                 src="/nec-logo.png" 
                                 alt="NEC Logo" 
                                 className="w-full h-full object-contain"
                             />
                         </div>
-                        <h1 className="text-xl font-bold text-white">
+                        <h1 className="text-xl font-bold text-white tracking-wide">
                             NEC LabMS
                         </h1>
                     </div>
                 )}
                 <button
-                    onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                    onClick={handleToggleCollapse}
                     className="p-2 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors text-white"
+                    title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
                 >
-                    <svg className={`w-5 h-5 transition-transform ${sidebarCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className={`w-5 h-5 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path>
                     </svg>
                 </button>
             </div>
 
-            {/* Navigation Items */}
-            <nav className="mt-6 px-3">
-                <div className="space-y-1">
-                    {navigationItems.filter(item => item.show).map((item) => {
-                        const isActive = location.pathname === item.path
+            {/* Navigation Items (Scrollable) */}
+            <nav className="mt-4 px-3 flex-1 overflow-y-auto overflow-x-hidden space-y-1.5 pb-24">
+                {navigationItems.filter(item => item.show).map((item) => {
+                    const hasChildren = item.children && item.children.length > 0
+                    const isParentActive = location.pathname === item.path
+                    const hasActiveChild = hasChildren && item.children.some(child => location.pathname === child.path)
+                    const isItemActive = isParentActive || hasActiveChild
+                    const isExpanded = Boolean(openSubmenus[item.id])
+
+                    if (hasChildren) {
                         return (
-                            <button
-                                key={item.id}
-                                onClick={() => handleNavigation(item.path)}
-                                className={`w-full flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${isActive
-                                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
-                                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            <div key={item.id} className="space-y-1">
+                                {/* Parent Row with open/close toggle on the right */}
+                                <div
+                                    onClick={() => {
+                                        if (isCollapsed) {
+                                            handleToggleCollapse()
+                                            setOpenSubmenus(prev => ({ ...prev, [item.id]: true }))
+                                        } else {
+                                            handleNavigation(item.path)
+                                            setOpenSubmenus(prev => ({ ...prev, [item.id]: true }))
+                                        }
+                                    }}
+                                    className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 cursor-pointer select-none ${
+                                        isItemActive
+                                            ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
+                                            : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                                     }`}
-                                title={sidebarCollapsed ? item.title : ''}
-                            >
-                                <div className="flex items-center justify-center w-5 h-5">
-                                    {item.icon}
-                                </div>
-                                {!sidebarCollapsed && (
-                                    <>
-                                        <span className="ml-3 flex-1 text-left">{item.title}</span>
-                                        {item.badge && (
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isActive ? 'bg-white/20 text-white' : (item.badgeColor || 'bg-blue-100 text-blue-800')
+                                    title={isCollapsed ? item.title : ''}
+                                >
+                                    <div className="flex items-center justify-center w-5 h-5 shrink-0">
+                                        {item.icon}
+                                    </div>
+                                    {!isCollapsed && (
+                                        <>
+                                            <span className="ml-3 flex-1 text-left font-semibold text-sm">{item.title}</span>
+                                            {item.badge && (
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold mr-1 ${
+                                                    isItemActive ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-800'
                                                 }`}>
-                                                {item.badge}
-                                            </span>
-                                        )}
-                                    </>
+                                                    {item.badge}
+                                                </span>
+                                            )}
+                                            {/* Open / Close button on the right of Equipment */}
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setOpenSubmenus(prev => ({
+                                                        ...prev,
+                                                        [item.id]: !prev[item.id]
+                                                    }))
+                                                }}
+                                                className={`p-1 rounded-md transition-all ml-1 ${
+                                                    isItemActive
+                                                        ? 'text-white/80 hover:text-white hover:bg-white/20'
+                                                        : 'text-gray-400 hover:text-gray-800 hover:bg-gray-200'
+                                                }`}
+                                                title={isExpanded ? `Close ${item.title} menu` : `Open ${item.title} menu`}
+                                                aria-label={`Toggle ${item.title} sub-menu`}
+                                            >
+                                                <svg
+                                                    className={`w-4 h-4 transform transition-transform duration-200 ${
+                                                        isExpanded ? 'rotate-90' : ''
+                                                    }`}
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    viewBox="0 0 24 24"
+                                                >
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
+                                                </svg>
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* Expanded Children: Category Master & Dealer Master */}
+                                {!isCollapsed && isExpanded && (
+                                    <div className="ml-4 pl-3 border-l-2 border-indigo-200 space-y-1 py-1 transition-all">
+                                        {item.children.map(subItem => {
+                                            const isSubActive = location.pathname === subItem.path
+                                            return (
+                                                <button
+                                                    key={subItem.id}
+                                                    type="button"
+                                                    onClick={() => handleNavigation(subItem.path)}
+                                                    className={`w-full flex items-center px-3 py-2 text-xs font-semibold rounded-lg transition-all ${
+                                                        isSubActive
+                                                            ? 'bg-blue-50 text-blue-700 font-bold shadow-2xs border border-blue-200'
+                                                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                                                    }`}
+                                                >
+                                                    <div className="w-4 h-4 mr-2.5 flex items-center justify-center shrink-0 text-current">
+                                                        {subItem.icon}
+                                                    </div>
+                                                    <span className="flex-1 text-left truncate">{subItem.title}</span>
+                                                    {subItem.badge && (
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-1 ${
+                                                            isSubActive ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-700'
+                                                        }`}>
+                                                            {subItem.badge}
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
                                 )}
-                                {sidebarCollapsed && item.badge && (
-                                    <span className={`absolute left-8 top-2 w-2 h-2 rounded-full ${item.badgeColor || 'bg-blue-500'
-                                        }`}></span>
-                                )}
-                            </button>
+                            </div>
                         )
-                    })}
-                </div>
+                    }
+
+                    // Standard item without children
+                    return (
+                        <button
+                            key={item.id}
+                            onClick={() => handleNavigation(item.path)}
+                            className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 ${isItemActive
+                                ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
+                                : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+                                }`}
+                            title={isCollapsed ? item.title : ''}
+                        >
+                            <div className="flex items-center justify-center w-5 h-5 shrink-0">
+                                {item.icon}
+                            </div>
+                            {!isCollapsed && (
+                                <>
+                                    <span className="ml-3 flex-1 text-left">{item.title}</span>
+                                    {item.badge && (
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isItemActive ? 'bg-white/20 text-white' : (item.badgeColor || 'bg-blue-100 text-blue-800')
+                                            }`}>
+                                            {item.badge}
+                                        </span>
+                                    )}
+                                </>
+                            )}
+                            {isCollapsed && item.badge && (
+                                <span className={`absolute left-8 top-2 w-2 h-2 rounded-full ${item.badgeColor || 'bg-blue-500'
+                                    }`}></span>
+                            )}
+                        </button>
+                    )
+                })}
             </nav>
 
             {/* Sidebar Footer */}

@@ -22,6 +22,24 @@ router.get('/stats', async (req, res) => {
     }
 });
 
+// GET eligible staff for lab in-charge assignment
+router.get('/staff', authenticateToken, async (req, res) => {
+    try {
+        const staff = await labService.getEligibleStaff();
+        res.json({
+            success: true,
+            data: staff
+        });
+    } catch (error) {
+        console.error('Error fetching eligible staff:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch staff members',
+            error: error.message
+        });
+    }
+});
+
 // GET all labs
 router.get('/', async (req, res) => {
     try {
@@ -52,7 +70,7 @@ router.post('/', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error creating lab:', error);
         
-        if (error.name === 'SequelizeUniqueConstraintError') {
+        if (error.name === 'SequelizeUniqueConstraintError' || error.name === 'SequelizeValidationError' || error.message?.includes('required') || error.message?.includes('Seating Capacity')) {
             return res.status(400).json({
                 success: false,
                 message: error.message
@@ -86,13 +104,39 @@ router.put('/:id', authenticateToken, async (req, res) => {
             });
         }
         
-        if (error.name === 'SequelizeUniqueConstraintError') {
+        if (error.name === 'SequelizeUniqueConstraintError' || error.name === 'SequelizeValidationError' || error.message?.includes('required') || error.message?.includes('Seating Capacity')) {
             return res.status(400).json({
                 success: false,
                 message: error.message
             });
         }
         
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Server error',
+            error: error.message
+        });
+    }
+});
+
+// PUT assign or update lab in-charge
+router.put('/:id/in-charge', authenticateToken, async (req, res) => {
+    try {
+        const { in_charge_id } = req.body;
+        const lab = await labService.assignInCharge(req.params.id, in_charge_id, req.user.userId);
+        res.json({
+            success: true,
+            data: lab,
+            message: in_charge_id ? 'Lab in-charge assigned successfully' : 'Lab in-charge removed successfully'
+        });
+    } catch (error) {
+        console.error('Error assigning lab in-charge:', error);
+        if (error.message === 'Lab not found') {
+            return res.status(404).json({
+                success: false,
+                message: error.message
+            });
+        }
         res.status(500).json({
             success: false,
             message: error.message || 'Server error',

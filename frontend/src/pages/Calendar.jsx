@@ -10,6 +10,7 @@ export default function Calendar() {
     const [labs, setLabs] = useState([])
     const [users, setUsers] = useState([])
     const [loading, setLoading] = useState(true)
+    const [isRefreshing, setIsRefreshing] = useState(false)
     const [error, setError] = useState('')
     const [currentDate, setCurrentDate] = useState(new Date())
     const [viewMode, setViewMode] = useState('month') // month, week, day
@@ -206,6 +207,32 @@ export default function Calendar() {
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
 
+    // Escape key handler to go back to previous state
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape' || event.key === 'Esc') {
+                if (showModal) {
+                    setShowModal(false)
+                    setSelectedBooking(null)
+                } else if (showUserMenu) {
+                    setShowUserMenu(false)
+                } else if (showNotifications) {
+                    setShowNotifications(false)
+                } else if (searchQuery) {
+                    setSearchQuery('')
+                } else if (filterStatus !== 'all' || filterType !== 'all') {
+                    setFilterStatus('all')
+                    setFilterType('all')
+                } else {
+                    navigate(-1)
+                }
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [showModal, showUserMenu, showNotifications, searchQuery, filterStatus, filterType, navigate])
+
     useEffect(() => {
         // Set document title
         document.title = 'Calendar | NEC LabMS'
@@ -242,6 +269,20 @@ export default function Calendar() {
             setError('Failed to load calendar data')
         } finally {
             setLoading(false)
+        }
+    }
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true)
+        try {
+            await Promise.all([
+                fetchBookings(),
+                fetchEquipment(),
+                fetchLabs(),
+                ...(user?.role === 'admin' ? [fetchUsers()] : [])
+            ])
+        } finally {
+            setTimeout(() => setIsRefreshing(false), 600)
         }
     }
 
@@ -1031,13 +1072,15 @@ export default function Calendar() {
                                 </div>
                             </div>
                             <button
-                                onClick={fetchData}
-                                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                                onClick={handleRefresh}
+                                disabled={isRefreshing}
+                                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 disabled:opacity-75 disabled:cursor-wait"
+                                title="Refresh Calendar"
                             >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                                 </svg>
-                                <span>Refresh</span>
+                                <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
                             </button>
                         </div>
                     </div>

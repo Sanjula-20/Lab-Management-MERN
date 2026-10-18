@@ -4,6 +4,8 @@ const { sequelize } = require('../config/database');
 // Import all models
 const Lab = require('./Lab');
 const Equipment = require('./Equipment');
+const EquipmentCategory = require('./EquipmentCategory');
+const Dealer = require('./Dealer');
 const User = require('./User').default ?? require('./User');
 const Booking = require('./Booking');
 const Notification = require('./Notification');
@@ -62,6 +64,16 @@ User.hasMany(Lab, {
 Lab.belongsTo(User, {
     foreignKey: 'created_by',
     as: 'labCreator'  // ✅ Matches routes/labs.js
+});
+
+// User - Lab associations (in-charge)
+User.hasMany(Lab, {
+    foreignKey: 'in_charge_id',
+    as: 'inChargeLabs'
+});
+Lab.belongsTo(User, {
+    foreignKey: 'in_charge_id',
+    as: 'inCharge'
 });
 
 // User - Equipment associations (creator)
@@ -308,6 +320,32 @@ Role.hasMany(User,         { foreignKey: 'roleId',       as: 'role_users', const
 User.belongsTo(Department, { foreignKey: 'departmentId', as: 'department', constraints: false });
 Department.hasMany(User,   { foreignKey: 'departmentId', as: 'users',      constraints: false });
 
+// ============= EQUIPMENT CATEGORY ASSOCIATIONS =============
+EquipmentCategory.hasMany(Equipment, {
+    foreignKey: 'category',
+    sourceKey: 'code',
+    as: 'equipment',
+    constraints: false
+});
+Equipment.belongsTo(EquipmentCategory, {
+    foreignKey: 'category',
+    targetKey: 'code',
+    as: 'categoryDetails',
+    constraints: false
+});
+
+// ============= DEALER ASSOCIATIONS =============
+Dealer.hasMany(Equipment, {
+    foreignKey: 'dealer_id',
+    as: 'equipment',
+    constraints: false
+});
+Equipment.belongsTo(Dealer, {
+    foreignKey: 'dealer_id',
+    as: 'dealer',
+    constraints: false
+});
+
 console.log('✅ Model associations defined successfully');
 
 // ============= EXPORT ALL MODELS =============
@@ -316,6 +354,8 @@ module.exports = {
     User,
     Lab,
     Equipment,
+    EquipmentCategory,
+    Dealer,
     Booking,
     Notification,
     NotificationSettings,

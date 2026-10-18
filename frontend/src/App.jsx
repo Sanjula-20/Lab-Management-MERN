@@ -21,6 +21,8 @@ import Calendar from './pages/Calendar'
 import Settings from './pages/Settings'
 import NewProfile from './pages/NewProfile'
 import Training from './pages/Training'
+import EquipmentCategoryMaster from './pages/EquipmentCategoryMaster'
+import DealerMaster from './pages/DealerMaster'
 import './index.css'
 import Chatbot from './components/Chatbot'
 
@@ -32,7 +34,7 @@ function AppContent() {
   const shouldShowChatbot = !hideChatbotPages.includes(location.pathname);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 overflow-x-hidden max-w-full">
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<HomePage />} />
@@ -83,10 +85,42 @@ function AppContent() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/equipment-categories"
+          element={
+            <ProtectedRoute>
+              <EquipmentCategoryMaster />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dealers"
+          element={
+            <ProtectedRoute>
+              <DealerMaster />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dealer-master"
+          element={
+            <ProtectedRoute>
+              <DealerMaster />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Lab Management - Protected Route */}
         <Route
           path="/lab-management"
+          element={
+            <ProtectedRoute>
+              <LabManagement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lab_management"
           element={
             <ProtectedRoute>
               <LabManagement />

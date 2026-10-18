@@ -29,6 +29,7 @@ export default function UserManagement() {
 
     // Dashboard-style state
     const [loading, setLoading] = useState(true)
+    const [isRefreshing, setIsRefreshing] = useState(false)
     const [error, setError] = useState('')
     const [searchQuery, setSearchQuery] = useState('')
     const [showUserMenu, setShowUserMenu] = useState(false)
@@ -203,6 +204,29 @@ export default function UserManagement() {
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
 
+    // Escape key handler to go back to previous state
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape' || event.key === 'Esc') {
+                if (showUserForm) {
+                    setShowUserForm(false)
+                    setEditingUser(null)
+                } else if (showUserMenu) {
+                    setShowUserMenu(false)
+                } else if (showNotifications) {
+                    setShowNotifications(false)
+                } else if (filters.search || filters.role || filters.status) {
+                    setFilters({ search: '', role: '', status: '' })
+                } else {
+                    navigate(-1)
+                }
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [showUserForm, showUserMenu, showNotifications, filters, navigate])
+
     // Authentication and data loading
     useEffect(() => {
         // Set document title
@@ -239,6 +263,15 @@ export default function UserManagement() {
             setError('Failed to load user data: ' + err.message)
         } finally {
             setLoading(false)
+        }
+    }
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true)
+        try {
+            await loadUserData()
+        } finally {
+            setTimeout(() => setIsRefreshing(false), 600)
         }
     }
 
@@ -680,11 +713,12 @@ export default function UserManagement() {
 
                                 {/* Refresh Button */}
                                 <button
-                                    onClick={loadUserData}
-                                    className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                                    title="Refresh Data"
+                                    onClick={handleRefresh}
+                                    disabled={isRefreshing}
+                                    className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+                                    title={isRefreshing ? "Refreshing..." : "Refresh Data"}
                                 >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className={`w-5 h-5 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                                     </svg>
                                 </button>
@@ -1023,49 +1057,58 @@ export default function UserManagement() {
                                                 </td>
                                                 {user?.role === 'admin' && (
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                        <div className="flex space-x-2">
+                                                        <div className="inline-flex items-center gap-1.5">
                                                             <button
                                                                 onClick={() => handleEdit(userItem)}
-                                                                className="text-blue-600 hover:text-blue-900 transition-colors"
+                                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 border border-blue-200 shadow-sm transition"
                                                                 title="Edit User"
                                                             >
-                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                                                                 </svg>
+                                                                <span>Edit</span>
                                                             </button>
                                                             <button
                                                                 onClick={() => handleResetPassword(userItem.id)}
-                                                                className="text-green-600 hover:text-green-900 transition-colors"
+                                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 border border-emerald-200 shadow-sm transition"
                                                                 title="Reset Password"
                                                             >
-                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
                                                                 </svg>
+                                                                <span>Reset</span>
                                                             </button>
                                                             <button
                                                                 onClick={() => handleToggleStatus(userItem)}
-                                                                className={`${userItem.status === 'Active' ? 'text-red-600 hover:text-red-900' : 'text-green-600 hover:text-green-900'} transition-colors`}
+                                                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold shadow-sm transition ${userItem.status === 'Active' ? 'text-amber-700 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 border border-amber-200' : 'text-green-700 bg-green-50 hover:bg-green-100 active:bg-green-200 border border-green-200'}`}
                                                                 title={userItem.status === 'Active' ? 'Deactivate User' : 'Activate User'}
                                                             >
                                                                 {userItem.status === 'Active' ? (
-                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728"></path>
-                                                                    </svg>
+                                                                    <>
+                                                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728"></path>
+                                                                        </svg>
+                                                                        <span>Deactivate</span>
+                                                                    </>
                                                                 ) : (
-                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                                                    </svg>
+                                                                    <>
+                                                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                                        </svg>
+                                                                        <span>Activate</span>
+                                                                    </>
                                                                 )}
                                                             </button>
                                                             <button
                                                                 onClick={() => handleDeleteUser(userItem)}
-                                                                className="text-red-600 hover:text-red-900 transition-colors"
+                                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 active:bg-red-200 border border-red-200 shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
                                                                 title="Delete User Permanently"
                                                                 disabled={userItem.id === user?.userId || userItem.email === user?.email}
                                                             >
-                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                                                                 </svg>
+                                                                <span>Delete</span>
                                                             </button>
                                                         </div>
                                                     </td>

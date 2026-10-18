@@ -82,6 +82,17 @@ export default function NewProfile() {
         }
     }, [])
 
+    // Escape key handler to go back to previous state
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' || e.key === 'Esc') {
+                navigate(-1)
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [navigate])
+
     const handleAvatarChange = async (e) => {
         const file = e.target.files[0]
         if (file) {

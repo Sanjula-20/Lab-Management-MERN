@@ -9,24 +9,31 @@ import { Sidebar, AppHeader, getNavigationItems } from '../components/common/Nav
 function AddEquipmentModal({ isOpen, onClose, onEquipmentAdded, labs }) {
     const { isAuthenticated } = useAuth()
     const API_BASE_URL = '/api' // Use relative URL for proxy
+    const [dealers, setDealers] = useState([])
     const [formData, setFormData] = useState({
         name: '',
         description: '',
         serial_number: '',
         model: '',
+        brand: '',
         manufacturer: '',
+        dealer_id: '',
+        dealer_name: '',
         category: 'computer',
         lab_id: '',
-        location_details: '',
         status: 'available',
         condition_status: 'excellent',
         purchase_price: '',
         current_value: '',
         purchase_date: new Date().toISOString().split('T')[0],
         warranty_expiry: '',
-        // Computer specific
-        processor: '',
+        // Configuration fields
         ram: '',
+        hard_disk: '',
+        gpu: '',
+        generation: '',
+        // Additional specs
+        processor: '',
         storage: '',
         graphics_card: '',
         operating_system: '',
@@ -56,6 +63,19 @@ function AddEquipmentModal({ isOpen, onClose, onEquipmentAdded, labs }) {
     })
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+
+    // Fetch dealers from Dealer Master table
+    useEffect(() => {
+        if (!isOpen) return
+        fetch(`${API_BASE_URL}/dealers`, { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    setDealers(data.data || [])
+                }
+            })
+            .catch(err => console.error('Error loading dealers:', err))
+    }, [isOpen])
 
     // Professional categories - standardized equipment types
     const categories = [
@@ -102,72 +122,30 @@ function AddEquipmentModal({ isOpen, onClose, onEquipmentAdded, labs }) {
         switch (formData.category) {
             case 'computer':
                 return (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-blue-50/60 p-4 rounded-xl border border-blue-200">
                         <div className="col-span-2">
-                            <h4 className="font-semibold text-blue-800 mb-3 flex items-center">
+                            <h4 className="font-semibold text-blue-800 flex items-center">
                                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
                                 </svg>
-                                Computer Specifications
+                                Computer System Details
                             </h4>
                         </div>
                         <div>
                             <label className="block text-gray-700 text-sm font-medium mb-2">
-                                Processor/CPU
+                                Processor / CPU Model
                             </label>
                             <input
                                 type="text"
                                 name="processor"
                                 value={formData.processor}
                                 onChange={handleChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="e.g., Intel Core i7-12700K"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                placeholder="e.g., Intel Core i7-12700K / AMD Ryzen 7"
                                 disabled={loading}
                             />
                         </div>
                         <div>
-                            <label className="block text-gray-700 text-sm font-medium mb-2">
-                                RAM Memory
-                            </label>
-                            <input
-                                type="text"
-                                name="ram"
-                                value={formData.ram}
-                                onChange={handleChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="e.g., 16GB DDR4"
-                                disabled={loading}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-gray-700 text-sm font-medium mb-2">
-                                Storage
-                            </label>
-                            <input
-                                type="text"
-                                name="storage"
-                                value={formData.storage}
-                                onChange={handleChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="e.g., 512GB SSD + 1TB HDD"
-                                disabled={loading}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-gray-700 text-sm font-medium mb-2">
-                                Graphics Card
-                            </label>
-                            <input
-                                type="text"
-                                name="graphics_card"
-                                value={formData.graphics_card}
-                                onChange={handleChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="e.g., NVIDIA RTX 4060"
-                                disabled={loading}
-                            />
-                        </div>
-                        <div className="col-span-2">
                             <label className="block text-gray-700 text-sm font-medium mb-2">
                                 Operating System
                             </label>
@@ -175,14 +153,14 @@ function AddEquipmentModal({ isOpen, onClose, onEquipmentAdded, labs }) {
                                 name="operating_system"
                                 value={formData.operating_system}
                                 onChange={handleChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                                 disabled={loading}
                             >
                                 <option value="">Select OS</option>
                                 <option value="Windows 11 Pro">Windows 11 Pro</option>
                                 <option value="Windows 11 Home">Windows 11 Home</option>
                                 <option value="Windows 10 Pro">Windows 10 Pro</option>
-                                <option value="macOS Ventura">macOS Ventura</option>
+                                <option value="macOS Sonoma">macOS Sonoma</option>
                                 <option value="Ubuntu Linux">Ubuntu Linux</option>
                                 <option value="Other Linux">Other Linux</option>
                             </select>
@@ -539,13 +517,20 @@ function AddEquipmentModal({ isOpen, onClose, onEquipmentAdded, labs }) {
         setError('')
 
         try {
+            const payload = {
+                ...formData,
+                manufacturer: formData.brand || formData.manufacturer,
+                storage: formData.hard_disk || formData.storage,
+                graphics_card: formData.gpu || formData.graphics_card
+            }
+
             const response = await fetch(`${API_BASE_URL}/equipment`, {
                 method: 'POST',
                 credentials: 'include',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(payload)
             })
 
             const result = await response.json()
@@ -559,18 +544,24 @@ function AddEquipmentModal({ isOpen, onClose, onEquipmentAdded, labs }) {
                     description: '',
                     serial_number: '',
                     model: '',
+                    brand: '',
                     manufacturer: '',
+                    dealer_id: '',
+                    dealer_name: '',
                     category: 'computer',
                     lab_id: '',
-                    location_details: '',
                     status: 'available',
                     condition_status: 'excellent',
                     purchase_price: '',
                     current_value: '',
                     purchase_date: new Date().toISOString().split('T')[0],
                     warranty_expiry: '',
-                    processor: '',
+                    // Configuration fields
                     ram: '',
+                    hard_disk: '',
+                    gpu: '',
+                    generation: '',
+                    processor: '',
                     storage: '',
                     graphics_card: '',
                     operating_system: '',
@@ -606,17 +597,34 @@ function AddEquipmentModal({ isOpen, onClose, onEquipmentAdded, labs }) {
 
     const handleChange = (e) => {
         const { name, value } = e.target
-        setFormData(prev => ({
-            ...prev,
-            [name]: value
-        }))
+        setFormData(prev => {
+            const next = { ...prev, [name]: value }
+            if (name === 'brand') next.manufacturer = value
+            if (name === 'hard_disk') next.storage = value
+            if (name === 'gpu') next.graphics_card = value
+            return next
+        })
         setError('')
     }
+
+    useEffect(() => {
+        if (!isOpen) return
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' || e.key === 'Esc') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isOpen, onClose])
 
     if (!isOpen) return null
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+        <div 
+            className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        >
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] overflow-hidden">
                 {/* Modal Header */}
                 <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4">
@@ -755,15 +763,15 @@ function AddEquipmentModal({ isOpen, onClose, onEquipmentAdded, labs }) {
 
                                 <div>
                                     <label className="block text-gray-700 text-sm font-medium mb-2">
-                                        Manufacturer/Brand
+                                        Brand * (e.g., Dell, HP, Lenovo)
                                     </label>
                                     <input
                                         type="text"
-                                        name="manufacturer"
-                                        value={formData.manufacturer}
+                                        name="brand"
+                                        value={formData.brand}
                                         onChange={handleChange}
                                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                                        placeholder="Manufacturer name"
+                                        placeholder="e.g., Dell"
                                         disabled={loading}
                                     />
                                 </div>
@@ -781,6 +789,34 @@ function AddEquipmentModal({ isOpen, onClose, onEquipmentAdded, labs }) {
                                         placeholder="Equipment model"
                                         disabled={loading}
                                     />
+                                </div>
+
+                                <div>
+                                    <label className="block text-gray-700 text-sm font-medium mb-2">
+                                        Dealer (from Dealer Master)
+                                    </label>
+                                    <select
+                                        name="dealer_id"
+                                        value={formData.dealer_id}
+                                        onChange={(e) => {
+                                            const sId = e.target.value;
+                                            const dObj = dealers.find(d => String(d.id) === String(sId));
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                dealer_id: sId,
+                                                dealer_name: dObj ? dObj.name : ''
+                                            }));
+                                        }}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
+                                        disabled={loading}
+                                    >
+                                        <option value="">Select Dealer</option>
+                                        {dealers.map(dealer => (
+                                            <option key={dealer.id} value={dealer.id}>
+                                                {dealer.name} {dealer.city ? `(${dealer.city})` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
 
                                 <div>
@@ -803,21 +839,6 @@ function AddEquipmentModal({ isOpen, onClose, onEquipmentAdded, labs }) {
 
                                 <div className="md:col-span-2">
                                     <label className="block text-gray-700 text-sm font-medium mb-2">
-                                        Location Details
-                                    </label>
-                                    <input
-                                        type="text"
-                                        name="location_details"
-                                        value={formData.location_details}
-                                        onChange={handleChange}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                                        placeholder="e.g., Room 101, Shelf A, Cabinet 2"
-                                        disabled={loading}
-                                    />
-                                </div>
-
-                                <div className="md:col-span-2">
-                                    <label className="block text-gray-700 text-sm font-medium mb-2">
                                         Description
                                     </label>
                                     <textarea
@@ -827,6 +848,88 @@ function AddEquipmentModal({ isOpen, onClose, onEquipmentAdded, labs }) {
                                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
                                         rows="3"
                                         placeholder="Detailed equipment description"
+                                        disabled={loading}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Configuration Section (RAM, Hard Disk, GPU, Generation) */}
+                        <div className="bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-purple-50/70 p-6 rounded-xl border border-blue-200">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                                    <span className="p-1.5 rounded-lg bg-blue-600 text-white shadow-2xs">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                                        </svg>
+                                    </span>
+                                    <span>Configuration</span>
+                                </h3>
+                                <span className="text-xs text-blue-700 font-semibold bg-blue-100 px-2.5 py-0.5 rounded-full border border-blue-200">
+                                    Hardware Specs
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-500 mb-4">
+                                Enter the hardware configuration details: RAM, Hard Disk, GPU, and Generation.
+                            </p>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-gray-700 text-sm font-medium mb-2">
+                                        RAM
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="ram"
+                                        value={formData.ram}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        placeholder="e.g., 16 GB DDR4 / 32 GB DDR5"
+                                        disabled={loading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-gray-700 text-sm font-medium mb-2">
+                                        Hard Disk
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="hard_disk"
+                                        value={formData.hard_disk}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        placeholder="e.g., 512 GB NVMe SSD / 1 TB HDD"
+                                        disabled={loading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-gray-700 text-sm font-medium mb-2">
+                                        GPU
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="gpu"
+                                        value={formData.gpu}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        placeholder="e.g., NVIDIA RTX 4060 / Intel Iris Xe"
+                                        disabled={loading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-gray-700 text-sm font-medium mb-2">
+                                        Generation
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="generation"
+                                        value={formData.generation}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        placeholder="e.g., 12th Gen / 13th Gen / M3"
                                         disabled={loading}
                                     />
                                 </div>
@@ -957,15 +1060,22 @@ function AddEquipmentModal({ isOpen, onClose, onEquipmentAdded, labs }) {
 // Edit Equipment Modal Component
 function EditEquipmentModal({ isOpen, onClose, equipment, onEquipmentUpdated }) {
     const { isAuthenticated } = useAuth()
+    const [dealers, setDealers] = useState([])
     const [formData, setFormData] = useState({
         name: equipment?.name || '',
         description: equipment?.description || '',
         serial_number: equipment?.serial_number || '',
         model: equipment?.model || '',
-        manufacturer: equipment?.manufacturer || '',
+        brand: equipment?.brand || equipment?.manufacturer || '',
+        manufacturer: equipment?.manufacturer || equipment?.brand || '',
+        dealer_id: equipment?.dealer_id || '',
+        dealer_name: equipment?.dealer_name || '',
+        ram: equipment?.ram || '',
+        hard_disk: equipment?.hard_disk || equipment?.storage || '',
+        gpu: equipment?.gpu || equipment?.graphics_card || '',
+        generation: equipment?.generation || '',
         status: equipment?.status || 'available',
         condition_status: equipment?.condition_status || 'excellent',
-        location_details: equipment?.location_details || '',
         purchase_price: equipment?.purchase_price || '',
         current_value: equipment?.current_value || '',
         purchase_date: equipment?.purchase_date ? equipment.purchase_date.split('T')[0] : '',
@@ -975,16 +1085,34 @@ function EditEquipmentModal({ isOpen, onClose, equipment, onEquipmentUpdated }) 
     const [error, setError] = useState('')
 
     useEffect(() => {
+        if (!isOpen) return
+        fetch('/api/dealers', { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    setDealers(data.data || [])
+                }
+            })
+            .catch(err => console.error('Error fetching dealers in edit modal:', err))
+    }, [isOpen])
+
+    useEffect(() => {
         if (equipment) {
             setFormData({
                 name: equipment.name || '',
                 description: equipment.description || '',
                 serial_number: equipment.serial_number || '',
                 model: equipment.model || '',
-                manufacturer: equipment.manufacturer || '',
+                brand: equipment.brand || equipment.manufacturer || '',
+                manufacturer: equipment.manufacturer || equipment.brand || '',
+                dealer_id: equipment.dealer_id || '',
+                dealer_name: equipment.dealer_name || '',
+                ram: equipment.ram || '',
+                hard_disk: equipment.hard_disk || equipment.storage || '',
+                gpu: equipment.gpu || equipment.graphics_card || '',
+                generation: equipment.generation || '',
                 status: equipment.status || 'available',
                 condition_status: equipment.condition_status || 'excellent',
-                location_details: equipment.location_details || '',
                 purchase_price: equipment.purchase_price || '',
                 current_value: equipment.current_value || '',
                 purchase_date: equipment.purchase_date ? equipment.purchase_date.split('T')[0] : '',
@@ -995,10 +1123,13 @@ function EditEquipmentModal({ isOpen, onClose, equipment, onEquipmentUpdated }) 
 
     const handleChange = (e) => {
         const { name, value } = e.target
-        setFormData(prev => ({
-            ...prev,
-            [name]: value
-        }))
+        setFormData(prev => {
+            const next = { ...prev, [name]: value }
+            if (name === 'brand') next.manufacturer = value
+            if (name === 'hard_disk') next.storage = value
+            if (name === 'gpu') next.graphics_card = value
+            return next
+        })
         setError('')
     }
 
@@ -1008,13 +1139,20 @@ function EditEquipmentModal({ isOpen, onClose, equipment, onEquipmentUpdated }) 
         setError('')
 
         try {
+            const payload = {
+                ...formData,
+                manufacturer: formData.brand || formData.manufacturer,
+                storage: formData.hard_disk || formData.storage,
+                graphics_card: formData.gpu || formData.graphics_card
+            }
+
             const response = await fetch(`/api/equipment/${equipment.id}`, {
                 method: 'PUT',
                 credentials: 'include',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(payload)
             })
 
             const result = await response.json()
@@ -1033,10 +1171,24 @@ function EditEquipmentModal({ isOpen, onClose, equipment, onEquipmentUpdated }) 
         }
     }
 
+    useEffect(() => {
+        if (!isOpen) return
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' || e.key === 'Esc') {
+                onClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isOpen, onClose])
+
     if (!isOpen) return null
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+        <div 
+            className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        >
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden">
                 <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4">
                     <div className="flex justify-between items-center">
@@ -1096,13 +1248,14 @@ function EditEquipmentModal({ isOpen, onClose, equipment, onEquipmentUpdated }) 
                             </div>
 
                             <div>
-                                <label className="block text-gray-700 text-sm font-medium mb-2">Manufacturer</label>
+                                <label className="block text-gray-700 text-sm font-medium mb-2">Brand (e.g., Dell, HP, Lenovo)</label>
                                 <input
                                     type="text"
-                                    name="manufacturer"
-                                    value={formData.manufacturer}
+                                    name="brand"
+                                    value={formData.brand}
                                     onChange={handleChange}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="e.g., Dell"
                                 />
                             </div>
 
@@ -1115,6 +1268,31 @@ function EditEquipmentModal({ isOpen, onClose, equipment, onEquipmentUpdated }) 
                                     onChange={handleChange}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 />
+                            </div>
+
+                            <div>
+                                <label className="block text-gray-700 text-sm font-medium mb-2">Dealer (from Dealer Master)</label>
+                                <select
+                                    name="dealer_id"
+                                    value={formData.dealer_id}
+                                    onChange={(e) => {
+                                        const sId = e.target.value;
+                                        const dObj = dealers.find(d => String(d.id) === String(sId));
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            dealer_id: sId,
+                                            dealer_name: dObj ? dObj.name : ''
+                                        }));
+                                    }}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                >
+                                    <option value="">Select Dealer</option>
+                                    {dealers.map(dealer => (
+                                        <option key={dealer.id} value={dealer.id}>
+                                            {dealer.name} {dealer.city ? `(${dealer.city})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
 
                             <div>
@@ -1147,16 +1325,60 @@ function EditEquipmentModal({ isOpen, onClose, equipment, onEquipmentUpdated }) 
                                 </select>
                             </div>
 
-                            <div className="md:col-span-2">
-                                <label className="block text-gray-700 text-sm font-medium mb-2">Location Details</label>
-                                <input
-                                    type="text"
-                                    name="location_details"
-                                    value={formData.location_details}
-                                    onChange={handleChange}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="e.g., Room 101, Shelf A"
-                                />
+                            {/* Configuration Section (RAM, Hard Disk, GPU, Generation) */}
+                            <div className="md:col-span-2 bg-gradient-to-r from-blue-50/70 to-indigo-50/60 p-4 rounded-xl border border-blue-200">
+                                <h4 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
+                                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                                    </svg>
+                                    <span>Configuration</span>
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-700 mb-1">RAM</label>
+                                        <input
+                                            type="text"
+                                            name="ram"
+                                            value={formData.ram}
+                                            onChange={handleChange}
+                                            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            placeholder="e.g., 16 GB DDR4"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-700 mb-1">Hard Disk</label>
+                                        <input
+                                            type="text"
+                                            name="hard_disk"
+                                            value={formData.hard_disk}
+                                            onChange={handleChange}
+                                            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            placeholder="e.g., 512 GB SSD"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-700 mb-1">GPU</label>
+                                        <input
+                                            type="text"
+                                            name="gpu"
+                                            value={formData.gpu}
+                                            onChange={handleChange}
+                                            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            placeholder="e.g., NVIDIA RTX 4060"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-700 mb-1">Generation</label>
+                                        <input
+                                            type="text"
+                                            name="generation"
+                                            value={formData.generation}
+                                            onChange={handleChange}
+                                            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            placeholder="e.g., 12th Gen / M3"
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="md:col-span-2">
@@ -1257,6 +1479,35 @@ export default function EquipmentInventory() {
         document.addEventListener('mousedown', handleClickOutside)
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
+
+    // Escape key handler to go back to previous state
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape' || event.key === 'Esc') {
+                if (showAddForm) {
+                    setShowAddForm(false)
+                } else if (showEditModal) {
+                    setShowEditModal(false)
+                    setEditingEquipment(null)
+                } else if (showImportModal) {
+                    setShowImportModal(false)
+                } else if (showUserMenu) {
+                    setShowUserMenu(false)
+                } else if (showNotifications) {
+                    setShowNotifications(false)
+                } else if (searchQuery) {
+                    setSearchQuery('')
+                } else if (filters.search || filters.category || filters.status || filters.lab_id) {
+                    setFilters({ search: '', category: '', status: '', lab_id: '' })
+                } else {
+                    navigate(-1)
+                }
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [showAddForm, showEditModal, showImportModal, showUserMenu, showNotifications, searchQuery, filters, navigate])
 
     useEffect(() => {
         document.title = 'Equipment Inventory | LabMS'
@@ -1606,6 +1857,26 @@ export default function EquipmentInventory() {
                                         </button>
                                     )}
                                     <button
+                                        onClick={() => navigate('/equipment-categories')}
+                                        className="px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all shadow-sm hover:shadow-md flex items-center space-x-2 font-medium"
+                                        title="Manage Equipment Categories"
+                                    >
+                                        <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                                        </svg>
+                                        <span>Category Master</span>
+                                    </button>
+                                    <button
+                                        onClick={() => navigate('/dealers')}
+                                        className="px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all shadow-sm hover:shadow-md flex items-center space-x-2 font-medium"
+                                        title="Manage Dealers and Vendors"
+                                    >
+                                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                                        </svg>
+                                        <span>Dealer Master</span>
+                                    </button>
+                                    <button
                                         onClick={() => setShowImportModal(true)}
                                         className="px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all shadow-md hover:shadow-lg flex items-center space-x-2 font-medium"
                                     >
@@ -1845,7 +2116,10 @@ export default function EquipmentInventory() {
                                             {user?.role === 'admin' && (
                                                 <>
                                                     <button
-                                                        onClick={() => navigate(`/equipment/${item.id}/edit`)}
+                                                        onClick={() => {
+                                                            setEditingEquipment(item)
+                                                            setShowEditModal(true)
+                                                        }}
                                                         className="flex-1 bg-green-50 text-green-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-green-100 transition-colors flex items-center justify-center space-x-1"
                                                     >
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1855,11 +2129,12 @@ export default function EquipmentInventory() {
                                                     </button>
                                                     <button
                                                         onClick={() => handleDelete(item.id)}
-                                                        className="bg-red-50 text-red-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors"
+                                                        className="flex-1 bg-red-50 text-red-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors flex items-center justify-center space-x-1"
                                                     >
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                                                         </svg>
+                                                        <span>Delete</span>
                                                     </button>
                                                 </>
                                             )}

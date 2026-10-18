@@ -157,6 +157,25 @@ export default function EnhancedReportsAnalyticsNew() {
         }
     }, [isAuthenticated, fetchInitialData])
 
+    // Escape key handler to go back to previous state
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' || e.key === 'Esc') {
+                if (selectedLab || selectedEquipmentCategory || fromDate || toDate) {
+                    setSelectedLab('')
+                    setSelectedEquipmentCategory('')
+                    setFromDate('')
+                    setToDate('')
+                    setDateRange('all_time')
+                } else {
+                    navigate(-1)
+                }
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [selectedLab, selectedEquipmentCategory, fromDate, toDate, navigate])
+
     // Fetch stats for navigation badges
     const fetchStats = async () => {
         try {

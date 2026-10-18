@@ -31,17 +31,16 @@ const Equipment = sequelize.define('Equipment', {
         type: DataTypes.STRING(100),
         allowNull: true
     },
+    brand: {
+        type: DataTypes.STRING(100),
+        allowNull: true
+    },
     manufacturer: {
         type: DataTypes.STRING(100),
         allowNull: true
     },
     category: {
-        type: DataTypes.ENUM(
-            'computer', 'printer', 'projector', 'scanner', 'microscope',
-            'centrifuge', 'spectrophotometer', 'ph_meter', 'balance',
-            'incubator', 'autoclave', 'pipette', 'thermometer',
-            'glassware', 'safety_equipment', 'lab_equipment', 'network', 'network_equipment', 'other'
-        ),
+        type: DataTypes.STRING(50),
         allowNull: false
     },
     lab_id: {
@@ -53,6 +52,20 @@ const Equipment = sequelize.define('Equipment', {
         },
         onUpdate: 'CASCADE',
         onDelete: 'RESTRICT'
+    },
+    dealer_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: 'dealers',
+            key: 'id'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'SET NULL'
+    },
+    dealer_name: {
+        type: DataTypes.STRING(150),
+        allowNull: true
     },
     location_details: {
         type: DataTypes.STRING(200),
@@ -108,11 +121,14 @@ const Equipment = sequelize.define('Equipment', {
         onUpdate: 'CASCADE',
         onDelete: 'RESTRICT'
     },
-    // ✅ ADDED: Category-specific fields
-    processor: DataTypes.STRING(100),
+    // ✅ Configuration fields
     ram: DataTypes.STRING(50),
+    hard_disk: DataTypes.STRING(100),
+    gpu: DataTypes.STRING(100),
+    generation: DataTypes.STRING(100),
     storage: DataTypes.STRING(100),
     graphics_card: DataTypes.STRING(100),
+    processor: DataTypes.STRING(100),
     operating_system: DataTypes.STRING(100),
     resolution: DataTypes.STRING(50),
     brightness: DataTypes.STRING(50),

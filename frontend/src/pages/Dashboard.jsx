@@ -49,6 +49,7 @@ export default function Dashboard() {
     const [timeBasedGreeting, setTimeBasedGreeting] = useState('')
     const [currentTime, setCurrentTime] = useState(new Date())
     const [loading, setLoading] = useState(true)
+    const [isRefreshing, setIsRefreshing] = useState(false)
     const [error, setError] = useState('')
     const [searchQuery, setSearchQuery] = useState('')
     const [showUserMenu, setShowUserMenu] = useState(false)
@@ -251,6 +252,26 @@ export default function Dashboard() {
         document.addEventListener('mousedown', handleClickOutside)
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
+
+    // Escape key handler to close menus/search/modals
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape' || event.key === 'Esc') {
+                if (showActivitiesModal) {
+                    setShowActivitiesModal(false)
+                } else if (showUserMenu) {
+                    setShowUserMenu(false)
+                } else if (showNotifications) {
+                    setShowNotifications(false)
+                } else if (searchQuery) {
+                    setSearchQuery('')
+                }
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [showActivitiesModal, showUserMenu, showNotifications, searchQuery])
 
     // Load dashboard data
     useEffect(() => {
@@ -714,6 +735,15 @@ export default function Dashboard() {
         }
     }
 
+    const handleRefresh = async () => {
+        setIsRefreshing(true)
+        try {
+            await loadDashboardData()
+        } finally {
+            setTimeout(() => setIsRefreshing(false), 600)
+        }
+    }
+
     const handleNavigation = (path) => {
         try {
             navigate(path)
@@ -1162,13 +1192,15 @@ export default function Dashboard() {
                             </div>
                             <div className="mt-4 md:mt-0 flex items-center space-x-4">
                                 <button
-                                    onClick={loadDashboardData}
-                                    className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors flex items-center space-x-2"
+                                    onClick={handleRefresh}
+                                    disabled={isRefreshing}
+                                    className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors flex items-center space-x-2 disabled:opacity-75 disabled:cursor-wait"
+                                    title="Refresh Dashboard"
                                 >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-blue-700' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                                     </svg>
-                                    <span>Refresh</span>
+                                    <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
                                 </button>
                             </div>
                         </div>

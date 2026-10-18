@@ -28,6 +28,7 @@ export default function MaintenanceSchedule() {
         unreadNotifications: 0
     })
     const [showMaintenanceForm, setShowMaintenanceForm] = useState(false)
+    const [selectedRecord, setSelectedRecord] = useState(null)
     const [newMaintenance, setNewMaintenance] = useState({
         equipment: '',
         type: 'routine',
@@ -40,6 +41,7 @@ export default function MaintenanceSchedule() {
 
     // Dashboard-style state
     const [loading, setLoading] = useState(true)
+    const [isRefreshing, setIsRefreshing] = useState(false)
     const [error, setError] = useState('')
     const [searchQuery, setSearchQuery] = useState('')
     const [showUserMenu, setShowUserMenu] = useState(false)
@@ -108,6 +110,30 @@ export default function MaintenanceSchedule() {
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
 
+    // Escape key handler to go back to previous state
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape' || event.key === 'Esc') {
+                if (selectedRecord) {
+                    setSelectedRecord(null)
+                } else if (showMaintenanceForm) {
+                    setShowMaintenanceForm(false)
+                } else if (showUserMenu) {
+                    setShowUserMenu(false)
+                } else if (showNotifications) {
+                    setShowNotifications(false)
+                } else if (searchQuery) {
+                    setSearchQuery('')
+                } else {
+                    navigate(-1)
+                }
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [selectedRecord, showMaintenanceForm, showUserMenu, showNotifications, searchQuery, navigate])
+
     // Load data on component mount
     useEffect(() => {
         if (!isAuthenticated) {
@@ -132,6 +158,19 @@ export default function MaintenanceSchedule() {
             setError('Failed to load maintenance data')
         } finally {
             setLoading(false)
+        }
+    }
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true)
+        try {
+            await Promise.all([
+                fetchMaintenance(),
+                fetchStats(),
+                fetchNavigationStats()
+            ])
+        } finally {
+            setTimeout(() => setIsRefreshing(false), 600)
         }
     }
 
@@ -356,11 +395,12 @@ export default function MaintenanceSchedule() {
 
                                 {/* Refresh Button */}
                                 <button
-                                    onClick={loadMaintenanceData}
-                                    className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                                    title="Refresh Data"
+                                    onClick={handleRefresh}
+                                    disabled={isRefreshing}
+                                    className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+                                    title={isRefreshing ? "Refreshing..." : "Refresh Data"}
                                 >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className={`w-5 h-5 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                                     </svg>
                                 </button>
@@ -754,37 +794,51 @@ export default function MaintenanceSchedule() {
                                                 ${parseFloat(item.estimated_cost || item.cost || 0).toFixed(2)}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                <div className="flex space-x-2">
-                                                    {item.status !== 'completed' && (
-                                                        <button
-                                                            onClick={() => handleStatusUpdate(item.id, 'completed')}
-                                                            className="text-green-600 hover:text-green-900 transition-colors"
-                                                            title="Mark as Complete"
-                                                        >
-                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                                                            </svg>
-                                                        </button>
-                                                    )}
+                                                <div className="inline-flex items-center gap-1.5">
+                                                    <button
+                                                        onClick={() => setSelectedRecord(item)}
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 border border-blue-200 shadow-sm transition"
+                                                        title="View Maintenance Details"
+                                                    >
+                                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                        </svg>
+                                                        <span>View</span>
+                                                    </button>
                                                     {item.status === 'scheduled' && (
                                                         <button
                                                             onClick={() => handleStatusUpdate(item.id, 'in_progress')}
-                                                            className="text-blue-600 hover:text-blue-900 transition-colors"
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 border border-indigo-200 shadow-sm transition"
                                                             title="Start Maintenance"
                                                         >
-                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h8m2-10a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                                                             </svg>
+                                                            <span>Start</span>
+                                                        </button>
+                                                    )}
+                                                    {item.status !== 'completed' && (
+                                                        <button
+                                                            onClick={() => handleStatusUpdate(item.id, 'completed')}
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 border border-emerald-200 shadow-sm transition"
+                                                            title="Mark as Complete"
+                                                        >
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                                                            </svg>
+                                                            <span>Complete</span>
                                                         </button>
                                                     )}
                                                     <button
                                                         onClick={() => handleDelete(item.id)}
-                                                        className="text-red-600 hover:text-red-900 transition-colors"
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 active:bg-red-200 border border-red-200 shadow-sm transition"
                                                         title="Delete Record"
                                                     >
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                                                         </svg>
+                                                        <span>Delete</span>
                                                     </button>
                                                 </div>
                                             </td>
@@ -880,6 +934,93 @@ export default function MaintenanceSchedule() {
                     </div>
                 </main>
             </div>
+
+            {/* View Maintenance Details Modal */}
+            {selectedRecord && (
+                <div 
+                    className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4"
+                    onClick={(e) => { if (e.target === e.currentTarget) setSelectedRecord(null); }}
+                >
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fadeIn">
+                        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between text-white">
+                            <div className="flex items-center space-x-2">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                </svg>
+                                <h3 className="text-lg font-bold">Maintenance Record #{selectedRecord.id}</h3>
+                            </div>
+                            <button
+                                onClick={() => setSelectedRecord(null)}
+                                className="text-white hover:text-gray-200 p-1.5 rounded-lg hover:bg-white hover:bg-opacity-10 transition"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                    <span className="text-xs text-gray-500 font-medium">Type</span>
+                                    <div className="mt-1">
+                                        <span className={`inline-flex px-2.5 py-0.5 text-xs font-semibold rounded-full ${getTypeColor(selectedRecord.maintenance_type || selectedRecord.type)}`}>
+                                            {formatType(selectedRecord.maintenance_type || selectedRecord.type)}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                    <span className="text-xs text-gray-500 font-medium">Status</span>
+                                    <div className="mt-1">
+                                        <span className={`inline-flex px-2.5 py-0.5 text-xs font-semibold rounded-full ${getStatusColor(selectedRecord.status)}`}>
+                                            {formatStatus(selectedRecord.status)}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2 text-sm">
+                                <div className="flex justify-between py-1.5 border-b border-gray-100">
+                                    <span className="text-gray-500">Equipment:</span>
+                                    <span className="font-semibold text-gray-900">{selectedRecord.equipment_name || selectedRecord.equipment || 'Unknown'}</span>
+                                </div>
+                                <div className="flex justify-between py-1.5 border-b border-gray-100">
+                                    <span className="text-gray-500">Priority:</span>
+                                    <span className="capitalize font-semibold text-gray-900">{selectedRecord.priority || 'Medium'}</span>
+                                </div>
+                                <div className="flex justify-between py-1.5 border-b border-gray-100">
+                                    <span className="text-gray-500">Scheduled Date:</span>
+                                    <span className="font-semibold text-gray-900">{selectedRecord.scheduled_date || selectedRecord.date || 'Not set'}</span>
+                                </div>
+                                <div className="flex justify-between py-1.5 border-b border-gray-100">
+                                    <span className="text-gray-500">Technician:</span>
+                                    <span className="font-semibold text-gray-900">{selectedRecord.technician_name || selectedRecord.technician || 'Unassigned'}</span>
+                                </div>
+                                <div className="flex justify-between py-1.5 border-b border-gray-100">
+                                    <span className="text-gray-500">Estimated Cost:</span>
+                                    <span className="font-semibold text-emerald-600">${parseFloat(selectedRecord.estimated_cost || selectedRecord.cost || 0).toFixed(2)}</span>
+                                </div>
+                            </div>
+
+                            {selectedRecord.description && (
+                                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                                    <span className="text-xs font-semibold text-gray-700 block mb-1">Description:</span>
+                                    <p className="text-xs text-gray-600 whitespace-pre-wrap">{selectedRecord.description}</p>
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button
+                                    onClick={() => setSelectedRecord(null)}
+                                    className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                                >
+                                    Close (Esc)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

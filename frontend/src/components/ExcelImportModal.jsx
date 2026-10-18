@@ -1,5 +1,5 @@
 // ExcelImportModal.jsx - Excel Import with Drag & Drop
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { apiConfig } from '../config/api'
 
@@ -474,10 +474,24 @@ const ExcelImportModal = ({ isOpen, onClose, onImportComplete, labs }) => {
         onClose()
     }
 
+    useEffect(() => {
+        if (!isOpen) return
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' || e.key === 'Esc') {
+                handleClose()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isOpen])
+
     if (!isOpen) return null
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
+        >
             <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
                 {/* Header */}
                 <div className="bg-blue-600 text-white px-6 py-4 flex justify-between items-center">

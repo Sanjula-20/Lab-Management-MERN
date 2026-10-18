@@ -256,6 +256,29 @@ export default function Training() {
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
 
+    // Escape key handler to go back to previous state
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape' || event.key === 'Esc') {
+                if (showModal) {
+                    setShowModal(false)
+                    setEditingTraining(null)
+                } else if (showUserMenu) {
+                    setShowUserMenu(false)
+                } else if (showNotifications) {
+                    setShowNotifications(false)
+                } else if (searchQuery) {
+                    setSearchQuery('')
+                } else {
+                    navigate(-1)
+                }
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [showModal, showUserMenu, showNotifications, searchQuery, navigate])
+
     useEffect(() => {
         // Set document title
         document.title = 'Training | NEC LabMS'
@@ -795,22 +818,32 @@ export default function Training() {
                                                 {training.current_participants || 0}/{training.max_participants}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <button
-                                                    onClick={() => {
-                                                        setEditingTraining(training)
-                                                        setFormData(training)
-                                                        setShowModal(true)
-                                                    }}
-                                                    className="text-blue-600 hover:text-blue-800 mr-4 transition-colors"
-                                                >
-                                                    Edit
-                                                </button>
-                                                <button
-                                                    onClick={() => deleteTraining(training.id)}
-                                                    className="text-red-600 hover:text-red-800 transition-colors"
-                                                >
-                                                    Delete
-                                                </button>
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingTraining(training)
+                                                            setFormData(training)
+                                                            setShowModal(true)
+                                                        }}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 border border-indigo-200 shadow-sm transition-all duration-150 hover:shadow"
+                                                        title="Edit Training Program"
+                                                    >
+                                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                        </svg>
+                                                        <span>Edit</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deleteTraining(training.id)}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 active:bg-red-200 border border-red-200 shadow-sm transition-all duration-150 hover:shadow"
+                                                        title="Delete Training Program"
+                                                    >
+                                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                        </svg>
+                                                        <span>Delete</span>
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     )

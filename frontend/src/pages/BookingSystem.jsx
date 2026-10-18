@@ -14,6 +14,8 @@ function BookingSystem() {
     const [equipment, setEquipment] = useState([])
     const [filteredEquipment, setFilteredEquipment] = useState([])
     const [loading, setLoading] = useState(true)
+    const [isRefreshing, setIsRefreshing] = useState(false)
+    const [selectedBooking, setSelectedBooking] = useState(null)
     const [error, setError] = useState('')
     const [showBookingForm, setShowBookingForm] = useState(false)
     const [newBooking, setNewBooking] = useState({
@@ -205,6 +207,90 @@ function BookingSystem() {
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
 
+    // Escape key handler to go back to previous state
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape' || event.key === 'Esc') {
+                if (selectedBooking) {
+                    setSelectedBooking(null)
+                } else if (showBookingForm) {
+                    setShowBookingForm(false)
+                } else if (showUserMenu) {
+                    setShowUserMenu(false)
+                } else if (searchQuery) {
+                    setSearchQuery('')
+                } else {
+                    navigate(-1)
+                }
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [selectedBooking, showBookingForm, showUserMenu, searchQuery, navigate])
+
+    const fetchData = async () => {
+        if (!isAuthenticated) {
+            console.log('Waiting for authentication...')
+            setLoading(false)
+            return
+        }
+
+        try {
+            setLoading(true)
+            setError('')
+
+            const headers = {
+                'Content-Type': 'application/json'
+            }
+
+            // Fetch labs
+            const labsResponse = await fetch(`${API_BASE_URL}/labs`, { credentials: 'include', headers })
+            if (labsResponse.ok) {
+                const labsData = await labsResponse.json()
+                setLabs(labsData.data?.labs || [])
+            } else {
+                console.error('Failed to fetch labs:', labsResponse.status)
+            }
+
+            // Fetch equipment
+            const equipmentResponse = await fetch(`${API_BASE_URL}/equipment?limit=1000`, { credentials: 'include', headers })
+            if (equipmentResponse.ok) {
+                const equipmentData = await equipmentResponse.json()
+                setEquipment(equipmentData.data?.equipment || [])
+                setFilteredEquipment(equipmentData.data?.equipment || [])
+            } else {
+                console.error('Failed to fetch equipment:', equipmentResponse.status)
+            }
+
+            // Fetch all bookings - all users can see all bookings
+            const bookingsUrl = `${API_BASE_URL}/bookings`
+            const bookingsResponse = await fetch(bookingsUrl, { credentials: 'include', headers })
+            if (bookingsResponse.ok) {
+                const bookingsData = await bookingsResponse.json()
+                const bookingsArray = Array.isArray(bookingsData.data) ? bookingsData.data : []
+                setBookings(bookingsArray)
+            } else {
+                console.error('Failed to fetch bookings:', bookingsResponse.status)
+            }
+
+        } catch (error) {
+            console.error('Error fetching data:', error)
+            setError('Failed to load data. Please check your connection.')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true)
+        try {
+            await fetchData()
+        } finally {
+            setTimeout(() => setIsRefreshing(false), 600)
+        }
+    }
+
     // Fetch labs, equipment and bookings
     useEffect(() => {
         // Set document title
@@ -213,68 +299,6 @@ function BookingSystem() {
         if (!isAuthenticated) {
             navigate('/login')
             return
-        }
-
-        const fetchData = async () => {
-            if (!isAuthenticated) {
-                console.log('Waiting for authentication...')
-                setLoading(false)
-                return
-            }
-
-            try {
-                setLoading(true)
-                setError('')
-
-                const headers = {
-                    'Content-Type': 'application/json'
-                }
-
-                // Fetch labs
-                const labsResponse = await fetch(`${API_BASE_URL}/labs`, { credentials: 'include', headers })
-                if (labsResponse.ok) {
-                    const labsData = await labsResponse.json()
-                    setLabs(labsData.data?.labs || [])
-                } else {
-                    console.error('Failed to fetch labs:', labsResponse.status)
-                }
-
-                // Fetch equipment
-                const equipmentResponse = await fetch(`${API_BASE_URL}/equipment?limit=1000`, { credentials: 'include', headers })
-                if (equipmentResponse.ok) {
-                    const equipmentData = await equipmentResponse.json()
-                    setEquipment(equipmentData.data?.equipment || [])
-                    setFilteredEquipment(equipmentData.data?.equipment || [])
-                } else {
-                    console.error('Failed to fetch equipment:', equipmentResponse.status)
-                }
-
-                // Fetch all bookings - all users can see all bookings
-                const bookingsUrl = `${API_BASE_URL}/bookings`
-                const bookingsResponse = await fetch(bookingsUrl, { credentials: 'include', headers })
-                if (bookingsResponse.ok) {
-                    const bookingsData = await bookingsResponse.json()
-                    console.log('📅 Bookings API response:', bookingsData)
-                    console.log('📅 Bookings data:', bookingsData.data)
-                    console.log('📅 Bookings count:', Array.isArray(bookingsData.data) ? bookingsData.data.length : 0)
-                    
-                    // Backend returns { success: true, data: [...bookings], pagination: {...} }
-                    // So bookingsData.data is already the array of bookings
-                    const bookingsArray = Array.isArray(bookingsData.data) ? bookingsData.data : []
-                    setBookings(bookingsArray)
-                    console.log('📅 Bookings set:', bookingsArray.length, 'bookings')
-                } else {
-                    console.error('Failed to fetch bookings:', bookingsResponse.status)
-                    const errorData = await bookingsResponse.json()
-                    console.error('Booking error details:', errorData)
-                }
-
-            } catch (error) {
-                console.error('Error fetching data:', error)
-                setError('Failed to load data. Please check your connection.')
-            } finally {
-                setLoading(false)
-            }
         }
 
         fetchData()
@@ -655,6 +679,18 @@ function BookingSystem() {
                                         hour12: true
                                     })}
                                 </div>
+
+                                {/* Refresh Button */}
+                                <button
+                                    onClick={handleRefresh}
+                                    disabled={isRefreshing}
+                                    className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+                                    title={isRefreshing ? "Refreshing..." : "Refresh Bookings"}
+                                >
+                                    <svg className={`w-5 h-5 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                    </svg>
+                                </button>
 
                                 {/* New Booking Button - hidden for students */}
                                 {user?.role !== 'student' && (
@@ -1052,15 +1088,32 @@ function BookingSystem() {
                                                         {booking.status?.charAt(0).toUpperCase() + booking.status?.slice(1)}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4 text-sm">
-                                                    {booking.status !== 'cancelled' && user?.role !== 'student' && (
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                                    <div className="inline-flex items-center gap-1.5">
                                                         <button
-                                                            className="text-red-600 hover:text-red-800 hover:underline transition-colors"
-                                                            onClick={() => handleCancelBooking(booking.id)}
+                                                            onClick={() => setSelectedBooking(booking)}
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 border border-blue-200 shadow-sm transition"
+                                                            title="View Booking Details"
                                                         >
-                                                            Cancel
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                            </svg>
+                                                            <span>View</span>
                                                         </button>
-                                                    )}
+                                                        {booking.status !== 'cancelled' && user?.role !== 'student' && (
+                                                            <button
+                                                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 active:bg-red-200 border border-red-200 shadow-sm transition"
+                                                                onClick={() => handleCancelBooking(booking.id)}
+                                                                title="Cancel Booking"
+                                                            >
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                                                </svg>
+                                                                <span>Cancel</span>
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -1071,6 +1124,103 @@ function BookingSystem() {
                     </div>
                 </main>
             </div>
+
+            {/* View Booking Details Modal */}
+            {selectedBooking && (
+                <div 
+                    className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4"
+                    onClick={(e) => { if (e.target === e.currentTarget) setSelectedBooking(null); }}
+                >
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fadeIn">
+                        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between text-white">
+                            <div className="flex items-center space-x-2">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                <h3 className="text-lg font-bold">Booking Details #{selectedBooking.id}</h3>
+                            </div>
+                            <button
+                                onClick={() => setSelectedBooking(null)}
+                                className="text-white hover:text-gray-200 p-1.5 rounded-lg hover:bg-white hover:bg-opacity-10 transition"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                    <span className="text-xs text-gray-500 font-medium">Type</span>
+                                    <div className="mt-1">
+                                        <span className={`inline-flex px-2.5 py-0.5 text-xs font-semibold rounded-full ${getBookingTypeColor(selectedBooking.booking_type)}`}>
+                                            {selectedBooking.booking_type?.toUpperCase()}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                    <span className="text-xs text-gray-500 font-medium">Status</span>
+                                    <div className="mt-1">
+                                        <span className={`inline-flex px-2.5 py-0.5 text-xs font-semibold rounded-full ${getStatusColor(selectedBooking.status)}`}>
+                                            {selectedBooking.status?.toUpperCase()}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2 text-sm">
+                                <div className="flex justify-between py-1.5 border-b border-gray-100">
+                                    <span className="text-gray-500">Laboratory:</span>
+                                    <span className="font-semibold text-gray-900">{selectedBooking.lab?.name || 'N/A'}</span>
+                                </div>
+                                {selectedBooking.equipment && (
+                                    <div className="flex justify-between py-1.5 border-b border-gray-100">
+                                        <span className="text-gray-500">Equipment:</span>
+                                        <span className="font-semibold text-gray-900">{selectedBooking.equipment.name}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between py-1.5 border-b border-gray-100">
+                                    <span className="text-gray-500">Booked By:</span>
+                                    <span className="font-semibold text-gray-900">{selectedBooking.user?.name || selectedBooking.user?.email || 'Unknown'}</span>
+                                </div>
+                                <div className="flex justify-between py-1.5 border-b border-gray-100">
+                                    <span className="text-gray-500">Date:</span>
+                                    <span className="font-semibold text-gray-900">{formatDate(selectedBooking.start_time)}</span>
+                                </div>
+                                <div className="flex justify-between py-1.5 border-b border-gray-100">
+                                    <span className="text-gray-500">Time Window:</span>
+                                    <span className="font-semibold text-gray-900">{formatTime(selectedBooking.start_time)} - {formatTime(selectedBooking.end_time)}</span>
+                                </div>
+                            </div>
+
+                            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                                <span className="text-xs font-semibold text-blue-900 block mb-1">Purpose / Notes:</span>
+                                <p className="text-xs text-blue-800 whitespace-pre-wrap">{selectedBooking.purpose || 'No description provided.'}</p>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                {selectedBooking.status !== 'cancelled' && user?.role !== 'student' && (
+                                    <button
+                                        onClick={() => {
+                                            handleCancelBooking(selectedBooking.id)
+                                            setSelectedBooking(null)
+                                        }}
+                                        className="px-4 py-2 text-sm font-semibold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition"
+                                    >
+                                        Cancel Booking
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setSelectedBooking(null)}
+                                    className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                                >
+                                    Close (Esc)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

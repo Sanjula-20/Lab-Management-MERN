@@ -27,6 +27,7 @@ export default function Notifications() {
 
     // Dashboard-style state
     const [loading, setLoading] = useState(true)
+    const [isRefreshing, setIsRefreshing] = useState(false)
     const [error, setError] = useState('')
     const [searchQuery, setSearchQuery] = useState('')
     const [showUserMenu, setShowUserMenu] = useState(false)
@@ -216,6 +217,28 @@ export default function Notifications() {
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
 
+    // Escape key handler to go back to previous state
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape' || event.key === 'Esc') {
+                if (showUserMenu) {
+                    setShowUserMenu(false)
+                } else if (showNotifications) {
+                    setShowNotifications(false)
+                } else if (searchQuery) {
+                    setSearchQuery('')
+                } else if (filter !== 'all') {
+                    setFilter('all')
+                } else {
+                    navigate(-1)
+                }
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [showUserMenu, showNotifications, searchQuery, filter, navigate])
+
     const loadNotificationsData = async () => {
         setLoading(true)
         setError('')
@@ -333,6 +356,18 @@ export default function Notifications() {
             if (!notifications.length) { // Only set error if no existing notifications
                 setError(error.message)
             }
+        }
+    }
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true)
+        try {
+            await Promise.all([
+                fetchNotifications(),
+                fetchNotificationSettings()
+            ])
+        } finally {
+            setTimeout(() => setIsRefreshing(false), 600)
         }
     }
 
@@ -792,11 +827,12 @@ export default function Notifications() {
 
                                 {/* Refresh Button */}
                                 <button
-                                    onClick={fetchNotifications}
-                                    className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                                    title="Refresh Notifications"
+                                    onClick={handleRefresh}
+                                    disabled={isRefreshing}
+                                    className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+                                    title={isRefreshing ? "Refreshing..." : "Refresh Notifications"}
                                 >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className={`w-5 h-5 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                                     </svg>
                                 </button>
