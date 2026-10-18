@@ -1,7 +1,8 @@
-// src/pages/Incidents.jsx - COMPLETELY FIXED VERSION
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import SmartSearchBar from '../components/common/SmartSearchBar'
+import Pagination from '../components/common/Pagination'
 
 export default function Incidents() {
     // ✅ FIXED: Ensure all arrays are properly initialized
@@ -14,8 +15,8 @@ export default function Incidents() {
     const [showModal, setShowModal] = useState(false)
     const [editingIncident, setEditingIncident] = useState(null)
     const [searchTerm, setSearchTerm] = useState('')
-    const [statusFilter, setStatusFilter] = useState('all')
-    const [priorityFilter, setPriorityFilter] = useState('all')
+    const [selectedStatuses, setSelectedStatuses] = useState([])
+    const [selectedPriorities, setSelectedPriorities] = useState([])
 
     // Sidebar and UI state
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -217,6 +218,30 @@ export default function Incidents() {
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
 
+    // Search filter groups
+    const incidentSearchGroups = useMemo(() => [
+        {
+            id: 'status',
+            label: 'Incident Status',
+            options: [
+                { id: 'open', label: 'Open', color: 'bg-yellow-100 text-yellow-800' },
+                { id: 'in_progress', label: 'In Progress', color: 'bg-blue-100 text-blue-800' },
+                { id: 'resolved', label: 'Resolved', color: 'bg-green-100 text-green-800' },
+                { id: 'closed', label: 'Closed', color: 'bg-gray-100 text-gray-800' }
+            ]
+        },
+        {
+            id: 'priority',
+            label: 'Priority Level',
+            options: [
+                { id: 'low', label: 'Low', color: 'bg-gray-100 text-gray-800' },
+                { id: 'medium', label: 'Medium', color: 'bg-blue-100 text-blue-800' },
+                { id: 'high', label: 'High', color: 'bg-orange-100 text-orange-800' },
+                { id: 'critical', label: 'Critical', color: 'bg-red-100 text-red-800' }
+            ]
+        }
+    ], [])
+
     // Escape key handler to go back to previous state
     useEffect(() => {
         const handleKeyDown = (event) => {
@@ -230,9 +255,9 @@ export default function Incidents() {
                     setShowNotifications(false)
                 } else if (searchTerm) {
                     setSearchTerm('')
-                } else if (statusFilter !== 'all' || priorityFilter !== 'all') {
-                    setStatusFilter('all')
-                    setPriorityFilter('all')
+                } else if (selectedStatuses.length > 0 || selectedPriorities.length > 0) {
+                    setSelectedStatuses([])
+                    setSelectedPriorities([])
                 } else {
                     navigate(-1)
                 }
@@ -241,7 +266,7 @@ export default function Incidents() {
 
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [showModal, showUserMenu, showNotifications, searchTerm, statusFilter, priorityFilter, navigate])
+    }, [showModal, showUserMenu, showNotifications, searchTerm, selectedStatuses, selectedPriorities, navigate])
 
     // Fetch all data
     useEffect(() => {
@@ -265,17 +290,37 @@ export default function Incidents() {
             return
         }
 
+        const q = searchTerm.toLowerCase().trim()
         let filtered = incidents.filter(incident => {
             if (!incident) return false
             
-            const matchesSearch = (incident.title?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-                (incident.description?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-            const matchesStatus = statusFilter === 'all' || incident.status === statusFilter
-            const matchesPriority = priorityFilter === 'all' || incident.priority === priorityFilter
+            const matchesSearch = !q ||
+                (incident.title?.toLowerCase() || '').includes(q) ||
+                (incident.description?.toLowerCase() || '').includes(q) ||
+                (incident.location?.toLowerCase() || '').includes(q) ||
+                (incident.category?.toLowerCase() || '').includes(q)
+            const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(incident.status)
+            const matchesPriority = selectedPriorities.length === 0 || selectedPriorities.includes(incident.priority)
             return matchesSearch && matchesStatus && matchesPriority
         })
         setFilteredIncidents(filtered)
-    }, [incidents, searchTerm, statusFilter, priorityFilter])
+    }, [incidents, searchTerm, selectedStatuses, selectedPriorities])
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1)
+    const [pageSize, setPageSize] = useState(10)
+
+    // Reset page when filters change
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [searchTerm, selectedStatuses, selectedPriorities])
+
+    // Paginated incidents slice
+    const paginatedIncidents = useMemo(() => {
+        if (!Array.isArray(filteredIncidents)) return []
+        const start = (currentPage - 1) * pageSize
+        return filteredIncidents.slice(start, start + pageSize)
+    }, [filteredIncidents, currentPage, pageSize])
 
     // ✅ FIXED: Safe notification count fetch
     const fetchNotificationCount = useCallback(async () => {
@@ -878,52 +923,42 @@ export default function Incidents() {
                     </div>
 
                     {/* Filters */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
-                                <input
-                                    type="text"
-                                    placeholder="Search incidents..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-8 p-4 sm:p-5">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            <div className="flex-1 max-w-2xl">
+                                <SmartSearchBar
+                                    searchValue={searchTerm}
+                                    onSearchChange={(val) => setSearchTerm(val)}
+                                    placeholder="Search incidents by title, description, location..."
+                                    groups={incidentSearchGroups}
+                                    selectedOptions={{
+                                        status: selectedStatuses,
+                                        priority: selectedPriorities
+                                    }}
+                                    onOptionToggle={(groupId, optId) => {
+                                        if (groupId === 'status') {
+                                            setSelectedStatuses(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
+                                        } else if (groupId === 'priority') {
+                                            setSelectedPriorities(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
+                                        }
+                                    }}
+                                    onGroupSelectAll={(groupId, allIds) => {
+                                        if (groupId === 'status') setSelectedStatuses(allIds)
+                                        else if (groupId === 'priority') setSelectedPriorities(allIds)
+                                    }}
+                                    onGroupClear={(groupId) => {
+                                        if (groupId === 'status') setSelectedStatuses([])
+                                        else if (groupId === 'priority') setSelectedPriorities([])
+                                    }}
+                                    onClearAll={() => {
+                                        setSearchTerm('')
+                                        setSelectedStatuses([])
+                                        setSelectedPriorities([])
+                                    }}
                                 />
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                                <select
-                                    value={statusFilter}
-                                    onChange={(e) => setStatusFilter(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-                                >
-                                    <option value="all">All Statuses</option>
-                                    {statuses.map(status => (
-                                        <option key={status} value={status}>
-                                            {status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
-                                <select
-                                    value={priorityFilter}
-                                    onChange={(e) => setPriorityFilter(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-                                >
-                                    <option value="all">All Priorities</option>
-                                    {priorities.map(priority => (
-                                        <option key={priority} value={priority}>
-                                            {priority.charAt(0).toUpperCase() + priority.slice(1)}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="flex items-end">
-                                <div className="text-sm text-gray-600">
-                                    <strong>{Array.isArray(filteredIncidents) ? filteredIncidents.length : 0}</strong> incident(s) found
-                                </div>
+                            <div className="text-xs sm:text-sm font-semibold text-gray-600 bg-gray-50 border border-gray-200 px-4 py-2.5 rounded-xl self-start lg:self-center">
+                                Showing <span className="text-red-600 font-bold">{Array.isArray(filteredIncidents) ? filteredIncidents.length : 0}</span> of <span className="font-bold text-gray-900">{Array.isArray(incidents) ? incidents.length : 0}</span> incidents
                             </div>
                         </div>
                     </div>
@@ -958,7 +993,7 @@ export default function Incidents() {
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
-                                    {Array.isArray(filteredIncidents) && filteredIncidents.map((incident) => {
+                                    {Array.isArray(paginatedIncidents) && paginatedIncidents.map((incident) => {
                                         if (!incident) return null
 
                                         // ✅ FIXED: Safe array access with fallback
@@ -1069,6 +1104,23 @@ export default function Incidents() {
                             )}
                         </div>
                     </div>
+
+                    {/* Pagination */}
+                    {Array.isArray(filteredIncidents) && filteredIncidents.length > 0 && (
+                        <Pagination
+                            currentPage={currentPage}
+                            totalItems={filteredIncidents.length}
+                            pageSize={pageSize}
+                            onPageChange={setCurrentPage}
+                            onPageSizeChange={(newSize) => {
+                                setPageSize(newSize)
+                                setCurrentPage(1)
+                            }}
+                            pageSizeOptions={[10, 25, 50]}
+                            itemLabel="incidents"
+                            scrollToTop={true}
+                        />
+                    )}
                 </main>
             </div>
 

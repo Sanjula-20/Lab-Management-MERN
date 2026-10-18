@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import SmartSearchBar from '../components/common/SmartSearchBar'
+import Pagination from '../components/common/Pagination'
 
 function BookingSystem() {
     const { isAuthenticated, user, logout } = useAuth()
@@ -18,6 +20,8 @@ function BookingSystem() {
     const [selectedBooking, setSelectedBooking] = useState(null)
     const [error, setError] = useState('')
     const [showBookingForm, setShowBookingForm] = useState(false)
+    const [selectedTypes, setSelectedTypes] = useState([])
+    const [selectedStatuses, setSelectedStatuses] = useState([])
     const [newBooking, setNewBooking] = useState({
         booking_type: 'lab',
         lab_id: '',
@@ -207,6 +211,28 @@ function BookingSystem() {
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
 
+    // Booking Search Groups
+    const bookingSearchGroups = useMemo(() => [
+        {
+            id: 'type',
+            label: 'Booking Type',
+            options: [
+                { id: 'lab', label: 'Lab Booking', color: 'bg-blue-100 text-blue-800' },
+                { id: 'equipment', label: 'Equipment Booking', color: 'bg-purple-100 text-purple-800' }
+            ]
+        },
+        {
+            id: 'status',
+            label: 'Booking Status',
+            options: [
+                { id: 'confirmed', label: 'Confirmed', color: 'bg-green-100 text-green-800' },
+                { id: 'pending', label: 'Pending', color: 'bg-yellow-100 text-yellow-800' },
+                { id: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-800' },
+                { id: 'completed', label: 'Completed', color: 'bg-gray-100 text-gray-800' }
+            ]
+        }
+    ], [])
+
     // Escape key handler to go back to previous state
     useEffect(() => {
         const handleKeyDown = (event) => {
@@ -219,6 +245,9 @@ function BookingSystem() {
                     setShowUserMenu(false)
                 } else if (searchQuery) {
                     setSearchQuery('')
+                } else if (selectedTypes.length > 0 || selectedStatuses.length > 0) {
+                    setSelectedTypes([])
+                    setSelectedStatuses([])
                 } else {
                     navigate(-1)
                 }
@@ -227,7 +256,7 @@ function BookingSystem() {
 
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [selectedBooking, showBookingForm, showUserMenu, searchQuery, navigate])
+    }, [selectedBooking, showBookingForm, showUserMenu, searchQuery, selectedTypes, selectedStatuses, navigate])
 
     const fetchData = async () => {
         if (!isAuthenticated) {
@@ -531,16 +560,35 @@ function BookingSystem() {
     }
 
     const filteredBookings = bookings.filter(booking => {
-        if (!searchQuery) return true
-        const query = searchQuery.toLowerCase()
-        return (
-            booking.lab?.name?.toLowerCase().includes(query) ||
-            booking.equipment?.name?.toLowerCase().includes(query) ||
-            booking.user?.name?.toLowerCase().includes(query) ||
-            booking.purpose?.toLowerCase().includes(query) ||
-            booking.status?.toLowerCase().includes(query)
-        )
+        if (!booking) return false
+        const q = searchQuery.toLowerCase().trim()
+        const matchesSearch = !q ||
+            booking.lab?.name?.toLowerCase().includes(q) ||
+            booking.equipment?.name?.toLowerCase().includes(q) ||
+            booking.user?.name?.toLowerCase().includes(q) ||
+            booking.purpose?.toLowerCase().includes(q) ||
+            booking.status?.toLowerCase().includes(q)
+
+        const matchesType = selectedTypes.length === 0 || selectedTypes.includes(booking.booking_type)
+        const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(booking.status)
+
+        return matchesSearch && matchesType && matchesStatus
     })
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1)
+    const [pageSize, setPageSize] = useState(10)
+
+    // Reset page when filters change
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [searchQuery, selectedTypes, selectedStatuses])
+
+    // Paginated bookings slice
+    const paginatedBookings = useMemo(() => {
+        const start = (currentPage - 1) * pageSize
+        return filteredBookings.slice(start, start + pageSize)
+    }, [filteredBookings, currentPage, pageSize])
 
     if (loading && !bookings.length) {
         return (
@@ -1016,13 +1064,51 @@ function BookingSystem() {
                         </div>
                     )}
 
+                    {/* Search and Filter Bar */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-8 p-4 sm:p-5">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            <div className="flex-1 max-w-2xl">
+                                <SmartSearchBar
+                                    searchValue={searchQuery}
+                                    onSearchChange={(val) => setSearchQuery(val)}
+                                    placeholder="Search by lab, equipment, user, purpose..."
+                                    groups={bookingSearchGroups}
+                                    selectedOptions={{
+                                        type: selectedTypes,
+                                        status: selectedStatuses
+                                    }}
+                                    onOptionToggle={(groupId, optId) => {
+                                        if (groupId === 'type') {
+                                            setSelectedTypes(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
+                                        } else if (groupId === 'status') {
+                                            setSelectedStatuses(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
+                                        }
+                                    }}
+                                    onGroupSelectAll={(groupId, allIds) => {
+                                        if (groupId === 'type') setSelectedTypes(allIds)
+                                        else if (groupId === 'status') setSelectedStatuses(allIds)
+                                    }}
+                                    onGroupClear={(groupId) => {
+                                        if (groupId === 'type') setSelectedTypes([])
+                                        else if (groupId === 'status') setSelectedStatuses([])
+                                    }}
+                                    onClearAll={() => {
+                                        setSearchQuery('')
+                                        setSelectedTypes([])
+                                        setSelectedStatuses([])
+                                    }}
+                                />
+                            </div>
+                            <div className="text-xs sm:text-sm font-semibold text-gray-600 bg-gray-50 border border-gray-200 px-4 py-2.5 rounded-xl self-start lg:self-center">
+                                Showing <span className="text-blue-600 font-bold">{filteredBookings.length}</span> of <span className="font-bold text-gray-900">{bookings.length}</span> bookings
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Bookings Table */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                             <h2 className="text-xl font-bold text-gray-900">Current Bookings</h2>
-                            <div className="text-sm text-gray-600">
-                                Showing {filteredBookings.length} of {bookings.length} bookings
-                            </div>
                         </div>
 
                         {filteredBookings.length === 0 ? (
@@ -1060,7 +1146,7 @@ function BookingSystem() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200">
-                                        {filteredBookings.map((booking) => (
+                                        {paginatedBookings.map((booking) => (
                                             <tr key={booking.id} className="hover:bg-gray-50 transition-colors">
                                                 <td className="px-6 py-4 text-sm font-medium text-gray-900">#{booking.id}</td>
                                                 <td className="px-6 py-4">
@@ -1122,6 +1208,23 @@ function BookingSystem() {
                             </div>
                         )}
                     </div>
+
+                    {/* Pagination */}
+                    {filteredBookings.length > 0 && (
+                        <Pagination
+                            currentPage={currentPage}
+                            totalItems={filteredBookings.length}
+                            pageSize={pageSize}
+                            onPageChange={setCurrentPage}
+                            onPageSizeChange={(newSize) => {
+                                setPageSize(newSize)
+                                setCurrentPage(1)
+                            }}
+                            pageSizeOptions={[10, 25, 50]}
+                            itemLabel="bookings"
+                            scrollToTop={true}
+                        />
+                    )}
                 </main>
             </div>
 

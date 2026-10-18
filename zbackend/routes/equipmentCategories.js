@@ -167,4 +167,45 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     }
 });
 
+// POST batch set status for multiple categories
+router.post('/batch-status', authenticateToken, async (req, res) => {
+    try {
+        const { ids, is_active } = req.body;
+        const result = await equipmentCategoryService.batchSetStatus(ids, is_active);
+        res.json({
+            success: true,
+            message: `Successfully set ${result.updatedCount} category/categories to ${is_active ? 'Active' : 'Inactive'}`,
+            data: result
+        });
+    } catch (error) {
+        console.error('Error batch updating category status:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to update category status',
+            error: error.message
+        });
+    }
+});
+
+// POST batch delete categories
+router.post('/batch-delete', authenticateToken, async (req, res) => {
+    try {
+        const { ids, force } = req.body;
+        const result = await equipmentCategoryService.batchDeleteCategories(ids, force);
+        res.json({
+            success: true,
+            message: `Successfully deleted ${result.deletedCount} category/categories${result.unlinkedCount > 0 ? ` (${result.unlinkedCount} equipment reassigned)` : ''}`,
+            data: result
+        });
+    } catch (error) {
+        console.error('Error batch deleting categories:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to batch delete categories',
+            canForce: error.message.includes('assigned to them'),
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;

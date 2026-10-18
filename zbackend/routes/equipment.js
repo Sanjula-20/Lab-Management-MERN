@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const { trackAccess } = require('./recentlyAccessed');
@@ -189,6 +189,46 @@ router.put('/:id', async (req, res) => {
     }
 });
 
+// POST batch update equipment status
+router.post('/batch-status', async (req, res) => {
+    try {
+        const { ids, status } = req.body;
+        const result = await equipmentService.batchUpdateStatus(ids, status, req.user.userId, req.user.role);
+        res.json({
+            success: true,
+            message: `Successfully updated status for ${result.updatedCount} equipment items to ${result.status}`,
+            data: result
+        });
+    } catch (error) {
+        console.error('Error updating batch status:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to update batch status',
+            error: error.message
+        });
+    }
+});
+
+// POST batch delete equipment
+router.post('/batch-delete', async (req, res) => {
+    try {
+        const { ids } = req.body;
+        const result = await equipmentService.batchDeleteEquipment(ids, req.user.userId, req.user.role);
+        res.json({
+            success: true,
+            message: `Successfully deleted ${result.deletedCount} equipment items`,
+            data: result
+        });
+    } catch (error) {
+        console.error('Error batch deleting equipment:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to delete equipment items',
+            error: error.message
+        });
+    }
+});
+
 // DELETE equipment
 router.delete('/:id', async (req, res) => {
     try {
@@ -245,6 +285,52 @@ router.delete('/lab/:labId/bulk', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to delete equipment',
+            error: error.message
+        });
+    }
+});
+
+// POST batch update status for multiple equipment
+router.post('/batch-status', async (req, res) => {
+    try {
+        const { ids, status } = req.body;
+        const result = await equipmentService.batchUpdateStatus(ids, status, req.user.userId);
+        res.json({
+            success: true,
+            message: `Successfully updated status to '${status}' for ${result.updatedCount} equipment item(s)`,
+            data: result
+        });
+    } catch (error) {
+        console.error('Error batch updating equipment status:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to update equipment status',
+            error: error.message
+        });
+    }
+});
+
+// POST batch delete equipment
+router.post('/batch-delete', async (req, res) => {
+    try {
+        const { ids } = req.body;
+        const result = await equipmentService.batchDeleteEquipment(ids, req.user.role);
+        res.json({
+            success: true,
+            message: `Successfully deleted ${result.deletedCount} equipment item(s)`,
+            data: result
+        });
+    } catch (error) {
+        console.error('Error batch deleting equipment:', error);
+        if (error.message.includes('administrators')) {
+            return res.status(403).json({
+                success: false,
+                message: error.message
+            });
+        }
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to batch delete equipment',
             error: error.message
         });
     }

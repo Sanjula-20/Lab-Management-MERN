@@ -1,9 +1,11 @@
 // src/pages/EquipmentInventory.jsx - Professional Laboratory Management UI
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { useNavigate, useLocation } from 'react-router-dom'
 import ExcelImportModal from '../components/ExcelImportModal'
 import { Sidebar, AppHeader, getNavigationItems } from '../components/common/Navigation'
+import SmartSearchBar from '../components/common/SmartSearchBar'
+import Pagination from '../components/common/Pagination'
 
 // Professional Add Equipment Modal Component with Dynamic Fields
 function AddEquipmentModal({ isOpen, onClose, onEquipmentAdded, labs }) {
@@ -1434,11 +1436,56 @@ export default function EquipmentInventory() {
         broken: 0
     })
     const [filters, setFilters] = useState({
-        lab_id: '',
-        status: '',
-        category: '',
-        search: ''
+        search: '',
+        statuses: [],
+        categories: [],
+        lab_ids: [],
+        brands: [],
+        conditions: []
     })
+    const [selectedEquipmentIds, setSelectedEquipmentIds] = useState([])
+    const [isFilterPanelExpanded, setIsFilterPanelExpanded] = useState(true)
+    const [viewMode, setViewMode] = useState(() => {
+        try {
+            const saved = localStorage.getItem('equipment_view_mode')
+            if (saved === 'table' || saved === 'card' || saved === 'grid') {
+                return saved === 'grid' ? 'card' : saved
+            }
+        } catch (e) {
+            // ignore
+        }
+        return 'card'
+    }) // 'card' | 'table'
+
+    const handleViewModeChange = (mode) => {
+        setViewMode(mode)
+        try {
+            localStorage.setItem('equipment_view_mode', mode)
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1)
+    const [pageSize, setPageSize] = useState(12) // 12 items fits 3 rows of 4 cards perfectly
+
+    // Reset pagination when filters change
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [filters])
+
+    // Paginated equipment list
+    const paginatedEquipment = useMemo(() => {
+        const start = (currentPage - 1) * pageSize
+        return equipment.slice(start, start + pageSize)
+    }, [equipment, currentPage, pageSize])
+
+    const [batchStatusModalOpen, setBatchStatusModalOpen] = useState(false)
+    const [batchSelectedStatus, setBatchSelectedStatus] = useState('available')
+    const [batchLoading, setBatchLoading] = useState(false)
+    const [toastMessage, setToastMessage] = useState(null)
+
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [showAddForm, setShowAddForm] = useState(false)
@@ -1455,15 +1502,153 @@ export default function EquipmentInventory() {
 
     const API_BASE_URL = '/api'
 
+    const showToast = (message, type = 'success') => {
+        setToastMessage({ message, type })
+        setTimeout(() => setToastMessage(null), 4000)
+    }
+
+    // Professional status options with visual badges & indicators
+    const statusOptions = [
+        { value: 'available', label: 'Available', dot: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-800 border border-emerald-200' },
+        { value: 'in_use', label: 'In Use', dot: 'bg-orange-500', badge: 'bg-orange-100 text-orange-800 border border-orange-200' },
+        { value: 'maintenance', label: 'Maintenance', dot: 'bg-red-500', badge: 'bg-red-100 text-red-800 border border-red-200' },
+        { value: 'broken', label: 'Out of Order', dot: 'bg-gray-500', badge: 'bg-gray-100 text-gray-800 border border-gray-200' },
+        { value: 'retired', label: 'Retired', dot: 'bg-purple-500', badge: 'bg-purple-100 text-purple-800 border border-purple-200' }
+    ]
+
     // Professional categories for filtering
     const categoryOptions = [
-        { value: 'computer', label: 'Computer & IT', color: 'bg-blue-100 text-blue-800' },
-        { value: 'projector', label: 'Projectors', color: 'bg-purple-100 text-purple-800' },
-        { value: 'printer', label: 'Printers', color: 'bg-green-100 text-green-800' },
-        { value: 'microscope', label: 'Microscopes', color: 'bg-indigo-100 text-indigo-800' },
-        { value: 'lab_equipment', label: 'Lab Equipment', color: 'bg-emerald-100 text-emerald-800' },
-        { value: 'network', label: 'Network', color: 'bg-orange-100 text-orange-800' }
+        { value: 'computer', label: 'Computer & IT', color: 'bg-blue-100 text-blue-800', icon: '💻' },
+        { value: 'projector', label: 'Projectors', color: 'bg-purple-100 text-purple-800', icon: '📽️' },
+        { value: 'printer', label: 'Printers', color: 'bg-green-100 text-green-800', icon: '🖨️' },
+        { value: 'microscope', label: 'Microscopes', color: 'bg-indigo-100 text-indigo-800', icon: '🔬' },
+        { value: 'lab_equipment', label: 'Lab Equipment', color: 'bg-emerald-100 text-emerald-800', icon: '🧪' },
+        { value: 'network', label: 'Network', color: 'bg-orange-100 text-orange-800', icon: '🌐' }
     ]
+
+    // Condition options
+    const conditionOptions = [
+        { value: 'excellent', label: 'Excellent', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+        { value: 'good', label: 'Good', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+        { value: 'fair', label: 'Fair', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+        { value: 'poor', label: 'Poor', color: 'bg-red-50 text-red-700 border-red-200' }
+    ]
+
+    // Dynamic brand detection from equipment list
+    const detectedBrands = Array.from(new Set(
+        equipment
+            .map(item => item.brand || item.manufacturer)
+            .filter(Boolean)
+            .map(b => b.trim())
+    )).slice(0, 10)
+    const brandOptions = detectedBrands.length > 0 ? detectedBrands : ['Dell', 'HP', 'Lenovo', 'Cisco', 'Apple', 'Epson']
+
+    // Smart Search Options Groups for unified search bar dropdown
+    const smartSearchGroups = [
+        {
+            id: 'statuses',
+            title: 'Status',
+            options: statusOptions.map(opt => ({
+                id: opt.value,
+                label: opt.label,
+                count: equipment.filter(e => e.status === opt.value).length,
+                badge: opt.badge
+            }))
+        },
+        {
+            id: 'categories',
+            title: 'Category',
+            options: categoryOptions.map(opt => ({
+                id: opt.value,
+                label: opt.label,
+                icon: opt.icon,
+                count: equipment.filter(e => e.category === opt.value).length
+            }))
+        },
+        {
+            id: 'lab_ids',
+            title: 'Laboratory',
+            options: labs.map(lab => ({
+                id: String(lab.id),
+                label: lab.name,
+                count: equipment.filter(e => String(e.lab_id) === String(lab.id)).length
+            }))
+        },
+        {
+            id: 'conditions',
+            title: 'Condition',
+            options: conditionOptions.map(opt => ({
+                id: opt.value,
+                label: opt.label,
+                count: equipment.filter(e => e.condition_status === opt.value).length
+            }))
+        },
+        {
+            id: 'brands',
+            title: 'Brand',
+            options: brandOptions.map(b => ({
+                id: b,
+                label: b,
+                count: equipment.filter(e => (e.brand || e.manufacturer) === b).length
+            }))
+        }
+    ]
+
+    // Helper functions for multi-select checkbox filters
+    const toggleCheckboxFilter = (key, value) => {
+        setFilters(prev => {
+            const list = prev[key] || []
+            const exists = list.includes(value)
+            const next = exists ? list.filter(v => v !== value) : [...list, value]
+            return { ...prev, [key]: next }
+        })
+    }
+
+    const selectAllFilterGroup = (key, allValues) => {
+        setFilters(prev => ({ ...prev, [key]: allValues }))
+    }
+
+    const clearFilterGroup = (key) => {
+        setFilters(prev => ({ ...prev, [key]: [] }))
+    }
+
+    const clearAllFilters = () => {
+        setFilters({
+            search: '',
+            statuses: [],
+            categories: [],
+            lab_ids: [],
+            brands: [],
+            conditions: []
+        })
+    }
+
+    // Record multi-selection helpers
+    const isAllSelected = equipment.length > 0 && selectedEquipmentIds.length === equipment.length
+    const isSomeSelected = selectedEquipmentIds.length > 0 && selectedEquipmentIds.length < equipment.length
+
+    const handleSelectAllRecords = () => {
+        if (isAllSelected) {
+            setSelectedEquipmentIds([])
+        } else {
+            setSelectedEquipmentIds(equipment.map(e => e.id))
+        }
+    }
+
+    const handleToggleRecord = (id) => {
+        setSelectedEquipmentIds(prev =>
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        )
+    }
+
+    // Active filters count
+    const activeFilterCount =
+        (filters.statuses?.length || 0) +
+        (filters.categories?.length || 0) +
+        (filters.lab_ids?.length || 0) +
+        (filters.brands?.length || 0) +
+        (filters.conditions?.length || 0) +
+        (filters.search ? 1 : 0)
 
     // All existing useEffect and function implementations remain the same...
     useEffect(() => {
@@ -1491,14 +1676,16 @@ export default function EquipmentInventory() {
                     setEditingEquipment(null)
                 } else if (showImportModal) {
                     setShowImportModal(false)
+                } else if (batchStatusModalOpen) {
+                    setBatchStatusModalOpen(false)
                 } else if (showUserMenu) {
                     setShowUserMenu(false)
                 } else if (showNotifications) {
                     setShowNotifications(false)
-                } else if (searchQuery) {
-                    setSearchQuery('')
-                } else if (filters.search || filters.category || filters.status || filters.lab_id) {
-                    setFilters({ search: '', category: '', status: '', lab_id: '' })
+                } else if (selectedEquipmentIds.length > 0) {
+                    setSelectedEquipmentIds([])
+                } else if (activeFilterCount > 0) {
+                    clearAllFilters()
                 } else {
                     navigate(-1)
                 }
@@ -1507,7 +1694,7 @@ export default function EquipmentInventory() {
 
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [showAddForm, showEditModal, showImportModal, showUserMenu, showNotifications, searchQuery, filters, navigate])
+    }, [showAddForm, showEditModal, showImportModal, batchStatusModalOpen, showUserMenu, showNotifications, selectedEquipmentIds, activeFilterCount, navigate])
 
     useEffect(() => {
         document.title = 'Equipment Inventory | LabMS'
@@ -1540,11 +1727,12 @@ export default function EquipmentInventory() {
                 }
 
                 const queryParams = new URLSearchParams()
-                Object.keys(filters).forEach(key => {
-                    if (filters[key]) {
-                        queryParams.append(key, filters[key])
-                    }
-                })
+                if (filters.search) queryParams.append('search', filters.search)
+                if (filters.statuses?.length > 0) queryParams.append('status', filters.statuses.join(','))
+                if (filters.categories?.length > 0) queryParams.append('category', filters.categories.join(','))
+                if (filters.lab_ids?.length > 0) queryParams.append('lab_id', filters.lab_ids.join(','))
+                if (filters.brands?.length > 0) queryParams.append('brand', filters.brands.join(','))
+                if (filters.conditions?.length > 0) queryParams.append('condition_status', filters.conditions.join(','))
                 
                 // Add limit to get all equipment items (default backend limit is 50)
                 queryParams.append('limit', '1000')
@@ -1601,11 +1789,12 @@ export default function EquipmentInventory() {
             }
 
             const queryParams = new URLSearchParams()
-            Object.keys(filters).forEach(key => {
-                if (filters[key]) {
-                    queryParams.append(key, filters[key])
-                }
-            })
+            if (filters.search) queryParams.append('search', filters.search)
+            if (filters.statuses?.length > 0) queryParams.append('status', filters.statuses.join(','))
+            if (filters.categories?.length > 0) queryParams.append('category', filters.categories.join(','))
+            if (filters.lab_ids?.length > 0) queryParams.append('lab_id', filters.lab_ids.join(','))
+            if (filters.brands?.length > 0) queryParams.append('brand', filters.brands.join(','))
+            if (filters.conditions?.length > 0) queryParams.append('condition_status', filters.conditions.join(','))
             queryParams.append('limit', '1000')
 
             const equipmentResponse = await fetch(`${API_BASE_URL}/equipment?${queryParams}`, { credentials: 'include', headers })
@@ -1628,6 +1817,124 @@ export default function EquipmentInventory() {
         } finally {
             setLoading(false)
         }
+    }
+
+    // Batch operations
+    const handleBatchStatusSubmit = async (targetStatus) => {
+        if (selectedEquipmentIds.length === 0) return
+        try {
+            setBatchLoading(true)
+            const res = await fetch(`${API_BASE_URL}/equipment/batch-status`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: selectedEquipmentIds, status: targetStatus })
+            })
+            const data = await res.json()
+            if (data.success) {
+                setEquipment(prev => prev.map(e => selectedEquipmentIds.includes(e.id) ? { ...e, status: targetStatus } : e))
+                setStats(prev => {
+                    const updated = equipment.map(e => selectedEquipmentIds.includes(e.id) ? { ...e, status: targetStatus } : e)
+                    return {
+                        total: updated.length,
+                        available: updated.filter(item => item.status === 'available').length,
+                        inUse: updated.filter(item => item.status === 'in_use').length,
+                        maintenance: updated.filter(item => item.status === 'maintenance').length,
+                        broken: updated.filter(item => item.status === 'broken').length
+                    }
+                })
+                showToast(`Updated status to '${targetStatus.replace('_', ' ')}' for ${selectedEquipmentIds.length} item(s)`)
+                setSelectedEquipmentIds([])
+                setBatchStatusModalOpen(false)
+            } else {
+                showToast(data.message || 'Failed to update equipment status', 'error')
+            }
+        } catch (err) {
+            console.error('Batch status error:', err)
+            showToast('Network error while updating equipment', 'error')
+        } finally {
+            setBatchLoading(false)
+        }
+    }
+
+    const handleBatchDelete = async () => {
+        if (selectedEquipmentIds.length === 0) return
+        const count = selectedEquipmentIds.length
+        if (!window.confirm(`⚠️ WARNING: Are you sure you want to delete ${count} selected equipment item(s)?\n\nThis action cannot be undone.`)) {
+            return
+        }
+        try {
+            setBatchLoading(true)
+            const res = await fetch(`${API_BASE_URL}/equipment/batch-delete`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: selectedEquipmentIds })
+            })
+            const data = await res.json()
+            if (data.success) {
+                const remaining = equipment.filter(e => !selectedEquipmentIds.includes(e.id))
+                setEquipment(remaining)
+                setStats({
+                    total: remaining.length,
+                    available: remaining.filter(item => item.status === 'available').length,
+                    inUse: remaining.filter(item => item.status === 'in_use').length,
+                    maintenance: remaining.filter(item => item.status === 'maintenance').length,
+                    broken: remaining.filter(item => item.status === 'broken').length
+                })
+                showToast(`Successfully deleted ${count} equipment item(s)`)
+                setSelectedEquipmentIds([])
+            } else {
+                showToast(data.message || 'Failed to delete selected equipment', 'error')
+            }
+        } catch (err) {
+            console.error('Batch delete error:', err)
+            showToast('Network error while deleting equipment', 'error')
+        } finally {
+            setBatchLoading(false)
+        }
+    }
+
+    const handleExportCSV = (onlySelected = false) => {
+        const itemsToExport = onlySelected
+            ? equipment.filter(e => selectedEquipmentIds.includes(e.id))
+            : equipment
+
+        if (itemsToExport.length === 0) {
+            showToast('No items to export', 'error')
+            return
+        }
+
+        const headers = ['ID', 'Name', 'Category', 'Status', 'Condition', 'Lab', 'Model', 'Brand', 'Serial Number', 'Dealer', 'Purchase Date', 'Purchase Price']
+        const csvRows = [headers.join(',')]
+
+        itemsToExport.forEach(item => {
+            const row = [
+                item.id,
+                `"${(item.name || '').replace(/"/g, '""')}"`,
+                `"${(item.category || '').replace(/"/g, '""')}"`,
+                `"${(item.status || '').replace(/"/g, '""')}"`,
+                `"${(item.condition_status || '').replace(/"/g, '""')}"`,
+                `"${(item.lab?.name || '').replace(/"/g, '""')}"`,
+                `"${(item.model || '').replace(/"/g, '""')}"`,
+                `"${(item.brand || item.manufacturer || '').replace(/"/g, '""')}"`,
+                `"${(item.serial_number || '').replace(/"/g, '""')}"`,
+                `"${(item.dealer?.name || item.dealer_name || '').replace(/"/g, '""')}"`,
+                `"${item.purchase_date || ''}"`,
+                item.purchase_price || 0
+            ]
+            csvRows.push(row.join(','))
+        })
+
+        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.setAttribute('href', url)
+        link.setAttribute('download', `equipment_inventory_${new Date().toISOString().slice(0, 10)}.csv`)
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        showToast(`Exported ${itemsToExport.length} equipment item(s) to CSV`)
     }
 
     const handleStatusUpdate = async (equipmentId, newStatus) => {
@@ -1996,176 +2303,470 @@ export default function EquipmentInventory() {
                         </div>
                     </div>
 
-                    {/* Enhanced Search and Filter */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
-                        <h3 className="text-lg font-semibold mb-4 flex items-center text-gray-900">
-                            <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                            </svg>
-                            Advanced Search & Filters
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <input
-                                type="text"
-                                placeholder="Search by name, model, serial..."
-                                value={filters.search}
-                                onChange={(e) => handleFilterChange('search', e.target.value)}
-                                className="px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                            />
-                            <select
-                                value={filters.lab_id}
-                                onChange={(e) => handleFilterChange('lab_id', e.target.value)}
-                                className="px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                            >
-                                <option value="">All Laboratories</option>
-                                {labs.map(lab => (
-                                    <option key={lab.id} value={lab.id}>{lab.name}</option>
-                                ))}
-                            </select>
-                            <select
-                                value={filters.category}
-                                onChange={(e) => handleFilterChange('category', e.target.value)}
-                                className="px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                            >
-                                <option value="">All Categories</option>
-                                {categoryOptions.map(cat => (
-                                    <option key={cat.value} value={cat.value}>{cat.label}</option>
-                                ))}
-                            </select>
-                            <select
-                                value={filters.status}
-                                onChange={(e) => handleFilterChange('status', e.target.value)}
-                                className="px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                            >
-                                <option value="">All Status</option>
-                                <option value="available">Available</option>
-                                <option value="in_use">In Use</option>
-                                <option value="maintenance">Maintenance</option>
-                                <option value="broken">Out of Order</option>
-                                <option value="retired">Retired</option>
-                            </select>
+                    {/* Toast Notification */}
+                    {toastMessage && (
+                        <div className={`fixed top-6 right-6 z-50 p-4 rounded-xl shadow-xl flex items-center space-x-3 text-sm font-semibold transition-all animate-bounce ${
+                            toastMessage.type === 'error' ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'
+                        }`}>
+                            <span>{toastMessage.message}</span>
+                            <button onClick={() => setToastMessage(null)} className="opacity-80 hover:opacity-100">✕</button>
+                        </div>
+                    )}
+
+                    {/* Search and Action Toolbar */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-6 p-4 sm:p-5">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            {/* Unified Smart Search Bar with Checkbox Options */}
+                            <div className="flex-1 max-w-2xl">
+                                <SmartSearchBar
+                                    searchValue={filters.search}
+                                    onSearchChange={(val) => handleFilterChange('search', val)}
+                                    placeholder="Search by name, model, serial number, brand, dealer..."
+                                    groups={smartSearchGroups}
+                                    selectedOptions={{
+                                        statuses: filters.statuses || [],
+                                        categories: filters.categories || [],
+                                        lab_ids: filters.lab_ids || [],
+                                        conditions: filters.conditions || [],
+                                        brands: filters.brands || []
+                                    }}
+                                    onOptionToggle={(groupId, optionId) => toggleCheckboxFilter(groupId, optionId)}
+                                    onGroupSelectAll={(groupId, allIds) => selectAllFilterGroup(groupId, allIds)}
+                                    onGroupClear={(groupId) => clearFilterGroup(groupId)}
+                                    onClearAll={clearAllFilters}
+                                />
+                            </div>
+
+                            {/* Toolbar Action Controls: View Switcher (Card vs Table), Select All, Export CSV */}
+                            <div className="flex items-center flex-wrap gap-2.5 self-start lg:self-center">
+                                {/* Viewing Options: Card View vs Table View */}
+                                <div className="inline-flex items-center p-1 bg-gray-100/90 rounded-xl border border-gray-200/90 shadow-2xs h-10">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleViewModeChange('card')}
+                                        className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 h-8 ${
+                                            viewMode === 'card' || viewMode === 'grid'
+                                                ? 'bg-white text-blue-700 shadow-sm font-bold ring-1 ring-black/5'
+                                                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50'
+                                        }`}
+                                        title="Switch to Card View"
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                                        </svg>
+                                        <span>Card View</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleViewModeChange('table')}
+                                        className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 h-8 ${
+                                            viewMode === 'table'
+                                                ? 'bg-white text-blue-700 shadow-sm font-bold ring-1 ring-black/5'
+                                                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50'
+                                        }`}
+                                        title="Switch to Table View"
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M3 14h18M3 18h18M3 6h18M3 6v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2z" />
+                                        </svg>
+                                        <span>Table View</span>
+                                    </button>
+                                </div>
+
+                                <div className="hidden sm:block h-6 w-px bg-gray-200 my-auto"></div>
+
+                                {/* Select All Checkbox */}
+                                <label className="inline-flex items-center space-x-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-xl border border-gray-200 cursor-pointer text-xs font-semibold text-gray-700 select-none transition-colors shadow-2xs h-10">
+                                    <input
+                                        type="checkbox"
+                                        checked={isAllSelected}
+                                        ref={el => el && (el.indeterminate = isSomeSelected)}
+                                        onChange={handleSelectAllRecords}
+                                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                    />
+                                    <span>
+                                        {selectedEquipmentIds.length > 0 
+                                            ? `Selected (${selectedEquipmentIds.length}/${equipment.length})`
+                                            : `Select All (${equipment.length})`}
+                                    </span>
+                                </label>
+
+                                {/* Export CSV */}
+                                <button
+                                    onClick={() => handleExportCSV(selectedEquipmentIds.length > 0)}
+                                    className="px-3.5 py-2 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 flex items-center space-x-1.5 transition-colors shadow-2xs h-10"
+                                    title="Export to CSV"
+                                >
+                                    <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    <span>{selectedEquipmentIds.length > 0 ? `Export (${selectedEquipmentIds.length})` : 'Export CSV'}</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Enhanced Equipment Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
-                        {equipment.map((item) => {
-                            const categoryInfo = getCategoryInfo(item.category)
-                            return (
-                                <div key={item.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 hover:shadow-lg transition-all duration-300 overflow-hidden group">
-                                    {/* Equipment Card Header */}
-                                    <div className="p-6 pb-4">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${categoryInfo.color}`}>
-                                                {categoryInfo.label}
-                                            </span>
-                                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(item.status)}`}>
-                                                {item.status?.replace('_', ' ')}
-                                            </span>
-                                        </div>
+                    {/* Floating / Sticky Batch Actions Bar (Visible when 1+ records are selected) */}
+                    {selectedEquipmentIds.length > 0 && (
+                        <div className="sticky top-4 z-40 mb-6 p-4 bg-gradient-to-r from-gray-900 to-indigo-950 text-white rounded-2xl shadow-2xl border border-indigo-700/50 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fadeIn">
+                            <div className="flex items-center space-x-3">
+                                <div className="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-400 font-bold">
+                                    ✓
+                                </div>
+                                <div>
+                                    <span className="font-bold text-sm">
+                                        {selectedEquipmentIds.length} {selectedEquipmentIds.length === 1 ? 'item' : 'items'} selected
+                                    </span>
+                                    <p className="text-[11px] text-gray-300">Choose a bulk operation to execute on selected records</p>
+                                </div>
+                            </div>
 
-                                        <h3 className="font-bold text-gray-900 mb-3 text-lg group-hover:text-blue-600 transition-colors">
-                                            {item.name}
-                                        </h3>
+                            <div className="flex items-center flex-wrap gap-2.5">
+                                {/* Batch Status Update */}
+                                <button
+                                    onClick={() => setBatchStatusModalOpen(true)}
+                                    disabled={batchLoading}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center space-x-1.5"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                    <span>Update Status</span>
+                                </button>
 
-                                        <div className="space-y-2 text-sm text-gray-600">
-                                            <div className="flex items-center">
-                                                <span className="w-20 font-medium">Lab:</span>
-                                                <span className="flex-1">{item.lab?.name || 'Unassigned'}</span>
+                                {/* Batch Export CSV */}
+                                <button
+                                    onClick={() => handleExportCSV(true)}
+                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center space-x-1.5"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    <span>Export CSV</span>
+                                </button>
+
+                                {/* Batch Delete (Admin only) */}
+                                {user?.role === 'admin' && (
+                                    <button
+                                        onClick={handleBatchDelete}
+                                        disabled={batchLoading}
+                                        className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center space-x-1.5"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                        <span>Delete Selected</span>
+                                    </button>
+                                )}
+
+                                {/* Deselect All */}
+                                <button
+                                    onClick={() => setSelectedEquipmentIds([])}
+                                    className="px-3 py-2 bg-white/10 hover:bg-white/20 text-gray-200 rounded-xl text-xs font-semibold transition-colors"
+                                >
+                                    Deselect All
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* VIEW 1: Card View with Selection Checkboxes */}
+                    {(viewMode === 'card' || viewMode === 'grid') && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
+                            {paginatedEquipment.map((item) => {
+                                const categoryInfo = getCategoryInfo(item.category)
+                                const isSelected = selectedEquipmentIds.includes(item.id)
+                                return (
+                                    <div
+                                        key={item.id}
+                                        className={`bg-white rounded-2xl shadow-sm border transition-all duration-300 overflow-hidden group relative flex flex-col justify-between ${
+                                            isSelected 
+                                                ? 'border-blue-500 ring-2 ring-blue-400 bg-blue-50/15 shadow-md' 
+                                                : 'border-gray-200 hover:shadow-lg hover:border-gray-300'
+                                        }`}
+                                    >
+                                        {/* Card Top Banner with Selection Checkbox & Category & Status */}
+                                        <div className="p-5 pb-3">
+                                            <div className="flex items-center justify-between mb-3 gap-2">
+                                                {/* Record Checkbox */}
+                                                <label className="flex items-center space-x-2 cursor-pointer select-none">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => handleToggleRecord(item.id)}
+                                                        className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                                        title="Select this record"
+                                                    />
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${categoryInfo.color}`}>
+                                                        {categoryInfo.label}
+                                                    </span>
+                                                </label>
+
+                                                {/* Status badge */}
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(item.status)}`}>
+                                                    {item.status?.replace('_', ' ')}
+                                                </span>
                                             </div>
-                                            {item.model && (
-                                                <div className="flex items-center">
-                                                    <span className="w-20 font-medium">Model:</span>
-                                                    <span className="flex-1 truncate">{item.model}</span>
-                                                </div>
-                                            )}
-                                            {item.serial_number && (
-                                                <div className="flex items-center">
-                                                    <span className="w-20 font-medium">S/N:</span>
-                                                    <span className="flex-1 font-mono text-xs">{item.serial_number}</span>
-                                                </div>
-                                            )}
-                                            {item.manufacturer && (
-                                                <div className="flex items-center">
-                                                    <span className="w-20 font-medium">Brand:</span>
-                                                    <span className="flex-1 truncate">{item.manufacturer}</span>
-                                                </div>
-                                            )}
-                                            {item.location_details && (
-                                                <div className="flex items-center">
-                                                    <span className="w-20 font-medium">Location:</span>
-                                                    <span className="flex-1 truncate">{item.location_details}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
 
-                                    {/* Equipment Card Actions */}
-                                    <div className="px-6 pb-6">
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() => navigate(`/equipment/${item.id}`)}
-                                                className="flex-1 bg-blue-50 text-blue-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors flex items-center justify-center space-x-1"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                                                </svg>
-                                                <span>View</span>
-                                            </button>
-                                            {user?.role === 'admin' && (
-                                                <>
-                                                    <button
-                                                        onClick={() => {
-                                                            setEditingEquipment(item)
-                                                            setShowEditModal(true)
-                                                        }}
-                                                        className="flex-1 bg-green-50 text-green-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-green-100 transition-colors flex items-center justify-center space-x-1"
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                                                        </svg>
-                                                        <span>Edit</span>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(item.id)}
-                                                        className="flex-1 bg-red-50 text-red-700 py-2 px-3 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors flex items-center justify-center space-x-1"
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                                                        </svg>
-                                                        <span>Delete</span>
-                                                    </button>
-                                                </>
-                                            )}
+                                            <h3 className="font-bold text-gray-900 mb-2 text-base group-hover:text-blue-600 transition-colors line-clamp-1" title={item.name}>
+                                                {item.name}
+                                            </h3>
+
+                                            <div className="space-y-1.5 text-xs text-gray-600">
+                                                <div className="flex items-center">
+                                                    <span className="w-16 font-medium text-gray-400">Lab:</span>
+                                                    <span className="flex-1 font-semibold text-gray-800 truncate">{item.lab?.name || 'Unassigned'}</span>
+                                                </div>
+                                                {item.model && (
+                                                    <div className="flex items-center">
+                                                        <span className="w-16 font-medium text-gray-400">Model:</span>
+                                                        <span className="flex-1 truncate">{item.model}</span>
+                                                    </div>
+                                                )}
+                                                {item.serial_number && (
+                                                    <div className="flex items-center">
+                                                        <span className="w-16 font-medium text-gray-400">S/N:</span>
+                                                        <span className="flex-1 font-mono text-[11px] text-gray-700 truncate">{item.serial_number}</span>
+                                                    </div>
+                                                )}
+                                                {(item.brand || item.manufacturer) && (
+                                                    <div className="flex items-center">
+                                                        <span className="w-16 font-medium text-gray-400">Brand:</span>
+                                                        <span className="flex-1 truncate font-medium text-indigo-700">{item.brand || item.manufacturer}</span>
+                                                    </div>
+                                                )}
+                                                {item.condition_status && (
+                                                    <div className="flex items-center">
+                                                        <span className="w-16 font-medium text-gray-400">Condition:</span>
+                                                        <span className="capitalize px-1.5 py-0.2 rounded text-[10px] bg-gray-100 text-gray-700 font-medium">
+                                                            {item.condition_status}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
 
-                                        {/* Quick Status Actions */}
-                                        {item.status === 'available' && (
-                                            <div className="mt-3">
+                                        {/* Equipment Card Actions */}
+                                        <div className="px-5 pb-5 pt-3 border-t border-gray-100 bg-gray-50/50">
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => navigate(`/equipment/${item.id}`)}
+                                                    className="flex-1 bg-white hover:bg-blue-50 text-blue-700 border border-blue-200 py-1.5 px-2.5 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center space-x-1 shadow-2xs"
+                                                >
+                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                    </svg>
+                                                    <span>View</span>
+                                                </button>
+                                                {user?.role === 'admin' && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => {
+                                                                setEditingEquipment(item)
+                                                                setShowEditModal(true)
+                                                            }}
+                                                            className="p-1.5 bg-white hover:bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-semibold transition-colors shadow-2xs"
+                                                            title="Edit Equipment"
+                                                        >
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                            </svg>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDelete(item.id)}
+                                                            className="p-1.5 bg-white hover:bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs font-semibold transition-colors shadow-2xs"
+                                                            title="Delete Equipment"
+                                                        >
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                            </svg>
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+
+                                            {/* Quick Status Toggle Button */}
+                                            {item.status === 'available' && (
                                                 <button
                                                     onClick={() => handleStatusUpdate(item.id, 'in_use')}
-                                                    className="w-full bg-orange-50 text-orange-700 py-2 px-3 rounded-lg text-xs font-medium hover:bg-orange-100 transition-colors"
+                                                    className="w-full mt-2 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-colors"
                                                 >
                                                     Mark as In Use
                                                 </button>
-                                            </div>
-                                        )}
-                                        {item.status === 'in_use' && (
-                                            <div className="mt-3">
+                                            )}
+                                            {item.status === 'in_use' && (
                                                 <button
                                                     onClick={() => handleStatusUpdate(item.id, 'available')}
-                                                    className="w-full bg-green-50 text-green-700 py-2 px-3 rounded-lg text-xs font-medium hover:bg-green-100 transition-colors"
+                                                    className="w-full mt-2 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-colors"
                                                 >
                                                     Mark as Available
                                                 </button>
-                                            </div>
-                                        )}
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            )
-                        })}
-                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+
+                    {/* VIEW 2: Table View with Selection Checkboxes */}
+                    {viewMode === 'table' && (
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-8 overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-gray-50/80 border-b border-gray-200 text-xs uppercase text-gray-500 font-bold tracking-wider">
+                                        <tr>
+                                            <th className="px-4 py-3.5 w-12 text-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isAllSelected}
+                                                    ref={el => el && (el.indeterminate = isSomeSelected)}
+                                                    onChange={handleSelectAllRecords}
+                                                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                                />
+                                            </th>
+                                            <th className="px-4 py-3.5">Equipment Name</th>
+                                            <th className="px-4 py-3.5">Category</th>
+                                            <th className="px-4 py-3.5">Assigned Lab</th>
+                                            <th className="px-4 py-3.5">Brand / Model</th>
+                                            <th className="px-4 py-3.5">Serial Number</th>
+                                            <th className="px-4 py-3.5 text-center">Condition</th>
+                                            <th className="px-4 py-3.5 text-center">Status</th>
+                                            <th className="px-4 py-3.5 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 font-normal text-gray-700">
+                                        {paginatedEquipment.map(item => {
+                                            const isSelected = selectedEquipmentIds.includes(item.id)
+                                            const catInfo = getCategoryInfo(item.category)
+                                            return (
+                                                <tr
+                                                    key={item.id}
+                                                    className={`hover:bg-blue-50/40 transition-colors ${
+                                                        isSelected ? 'bg-blue-50/60' : ''
+                                                    }`}
+                                                >
+                                                    {/* Checkbox Column */}
+                                                    <td className="px-4 py-3.5 text-center">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => handleToggleRecord(item.id)}
+                                                            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                                        />
+                                                    </td>
+
+                                                    {/* Equipment Name */}
+                                                    <td className="px-4 py-3.5">
+                                                        <div className="font-bold text-gray-900 hover:text-blue-600 cursor-pointer" onClick={() => navigate(`/equipment/${item.id}`)}>
+                                                            {item.name}
+                                                        </div>
+                                                        <div className="text-[11px] text-gray-400 font-mono">ID #{item.id}</div>
+                                                    </td>
+
+                                                    {/* Category */}
+                                                    <td className="px-4 py-3.5">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${catInfo.color}`}>
+                                                            {catInfo.label}
+                                                        </span>
+                                                    </td>
+
+                                                    {/* Lab */}
+                                                    <td className="px-4 py-3.5 font-medium text-gray-800">
+                                                        {item.lab?.name || <span className="text-gray-400 italic">Unassigned</span>}
+                                                    </td>
+
+                                                    {/* Brand / Model */}
+                                                    <td className="px-4 py-3.5 text-xs">
+                                                        <div className="font-semibold text-gray-900">{item.brand || item.manufacturer || '—'}</div>
+                                                        <div className="text-gray-500">{item.model || ''}</div>
+                                                    </td>
+
+                                                    {/* Serial Number */}
+                                                    <td className="px-4 py-3.5 font-mono text-xs text-gray-700">
+                                                        {item.serial_number || '—'}
+                                                    </td>
+
+                                                    {/* Condition */}
+                                                    <td className="px-4 py-3.5 text-center">
+                                                        <span className="capitalize px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700 font-medium">
+                                                            {item.condition_status || 'Good'}
+                                                        </span>
+                                                    </td>
+
+                                                    {/* Status */}
+                                                    <td className="px-4 py-3.5 text-center">
+                                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(item.status)}`}>
+                                                            {item.status?.replace('_', ' ')}
+                                                        </span>
+                                                    </td>
+
+                                                    {/* Actions */}
+                                                    <td className="px-4 py-3.5 text-right">
+                                                        <div className="flex items-center justify-end space-x-1">
+                                                            <button
+                                                                onClick={() => navigate(`/equipment/${item.id}`)}
+                                                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                                title="View Details"
+                                                            >
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                                </svg>
+                                                            </button>
+                                                            {user?.role === 'admin' && (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setEditingEquipment(item)
+                                                                            setShowEditModal(true)
+                                                                        }}
+                                                                        className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                                                        title="Edit"
+                                                                    >
+                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                                        </svg>
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleDelete(item.id)}
+                                                                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                                        title="Delete"
+                                                                    >
+                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                        </svg>
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Pagination for Equipment Listings */}
+                    {equipment.length > 0 && (
+                        <Pagination
+                            currentPage={currentPage}
+                            totalItems={equipment.length}
+                            pageSize={pageSize}
+                            onPageChange={setCurrentPage}
+                            onPageSizeChange={(newSize) => {
+                                setPageSize(newSize)
+                                setCurrentPage(1)
+                            }}
+                            pageSizeOptions={[8, 12, 24, 48]}
+                            itemLabel="equipment items"
+                            scrollToTop={true}
+                        />
+                    )}
 
                     {/* Enhanced No Results */}
                     {equipment.length === 0 && (
@@ -2236,6 +2837,83 @@ export default function EquipmentInventory() {
                     }}
                     labs={labs}
                 />
+            )}
+
+            {/* Batch Status Update Modal */}
+            {batchStatusModalOpen && (
+                <div 
+                    className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn"
+                    onClick={(e) => { if (e.target === e.currentTarget) setBatchStatusModalOpen(false); }}
+                >
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-100">
+                        <div className="flex items-center space-x-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-gray-900 text-base">Batch Update Status</h3>
+                                <p className="text-xs text-gray-500">Apply new status to {selectedEquipmentIds.length} selected item(s)</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2 mb-6">
+                            {statusOptions.map(opt => (
+                                <label
+                                    key={opt.value}
+                                    className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                                        batchSelectedStatus === opt.value
+                                            ? 'border-blue-600 bg-blue-50/50 text-blue-900 font-semibold'
+                                            : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                                    }`}
+                                >
+                                    <div className="flex items-center space-x-3">
+                                        <input
+                                            type="radio"
+                                            name="batchStatus"
+                                            value={opt.value}
+                                            checked={batchSelectedStatus === opt.value}
+                                            onChange={(e) => setBatchSelectedStatus(e.target.value)}
+                                            className="text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className={`w-2.5 h-2.5 rounded-full ${opt.dot}`}></span>
+                                        <span className="text-sm">{opt.label}</span>
+                                    </div>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full ${opt.badge}`}>
+                                        {opt.value}
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+
+                        <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-100">
+                            <button
+                                type="button"
+                                onClick={() => setBatchStatusModalOpen(false)}
+                                disabled={batchLoading}
+                                className="px-4 py-2 border border-gray-300 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleBatchStatusSubmit(batchSelectedStatus)}
+                                disabled={batchLoading}
+                                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md disabled:opacity-50 flex items-center space-x-2"
+                            >
+                                {batchLoading ? (
+                                    <>
+                                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                        <span>Updating...</span>
+                                    </>
+                                ) : (
+                                    <span>Apply to {selectedEquipmentIds.length} Items</span>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     )

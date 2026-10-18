@@ -53,13 +53,19 @@ class DealerService {
      * Get all dealers with optional search and status filter, plus equipment counts
      */
     async getAllDealers(filters = {}) {
-        const { search, status = 'all' } = filters;
+        const { search, status = 'all', city } = filters;
         const whereClause = {};
 
         if (status === 'active') {
             whereClause.is_active = true;
         } else if (status === 'inactive') {
             whereClause.is_active = false;
+        }
+
+        if (city) {
+            const cities = Array.isArray(city) ? city : String(city).split(',').map(s => s.trim()).filter(Boolean);
+            if (cities.length === 1) whereClause.city = cities[0];
+            else if (cities.length > 1) whereClause.city = { [Op.in]: cities };
         }
 
         if (search && search.trim()) {
@@ -304,6 +310,64 @@ class DealerService {
         return {
             ...dealer.toJSON(),
             message: `Dealer "${dealer.name}" is now ${newStatus ? 'Active' : 'Inactive'}`
+        };
+    }
+
+    /**
+     * Batch toggle or set active status for multiple dealers
+     */
+    async batchSetStatus(ids, isActive) {
+        if (!Array.isArray(ids) || ids.length === 0) {
+            throw new Error('Please select at least one dealer');
+        }
+
+        const [affectedCount] = await Dealer.update(
+            { is_active: Boolean(isActive) },
+            { where: { id: { [Op.in]: ids } } }
+        );
+
+        return {
+            updatedCount: affectedCount,
+            is_active: Boolean(isActive)
+        };
+    }
+
+    /**
+     * Batch delete multiple dealers
+     */
+    async batchDeleteDealers(ids, force = false) {
+        if (!Array.isArray(ids) || ids.length === 0) {
+            throw new Error('Please select at least one dealer to delete');
+        }
+
+        // Check if any dealers have linked equipment
+        const linkedCount = await Equipment.count({
+            where: {
+                dealer_id: { [Op.in]: ids },
+                is_active: true
+            }
+        });
+
+        if (linkedCount > 0 && !force) {
+            throw new Error(
+                `Selected dealers have ${linkedCount} equipment items linked to them. Please reassign or use Force Delete to unlink.`
+            );
+        }
+
+        if (linkedCount > 0 && force) {
+            await Equipment.update(
+                { dealer_id: null, dealer_name: null },
+                { where: { dealer_id: { [Op.in]: ids } } }
+            );
+        }
+
+        const deletedCount = await Dealer.destroy({
+            where: { id: { [Op.in]: ids } }
+        });
+
+        return {
+            deletedCount,
+            unlinkedCount: linkedCount
         };
     }
 }

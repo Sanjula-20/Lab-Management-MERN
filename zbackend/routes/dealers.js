@@ -191,4 +191,45 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     }
 });
 
+// POST batch set status for multiple dealers
+router.post('/batch-status', authenticateToken, async (req, res) => {
+    try {
+        const { ids, is_active } = req.body;
+        const result = await dealerService.batchSetStatus(ids, is_active);
+        res.json({
+            success: true,
+            message: `Successfully set ${result.updatedCount} dealer(s) to ${is_active ? 'Active' : 'Inactive'}`,
+            data: result
+        });
+    } catch (error) {
+        console.error('Error batch updating dealer status:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to update dealer status',
+            error: error.message
+        });
+    }
+});
+
+// POST batch delete dealers
+router.post('/batch-delete', authenticateToken, async (req, res) => {
+    try {
+        const { ids, force } = req.body;
+        const result = await dealerService.batchDeleteDealers(ids, force);
+        res.json({
+            success: true,
+            message: `Successfully deleted ${result.deletedCount} dealer(s)${result.unlinkedCount > 0 ? ` (${result.unlinkedCount} equipment unlinked)` : ''}`,
+            data: result
+        });
+    } catch (error) {
+        console.error('Error batch deleting dealers:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to batch delete dealers',
+            canForce: error.message.includes('linked to them'),
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;

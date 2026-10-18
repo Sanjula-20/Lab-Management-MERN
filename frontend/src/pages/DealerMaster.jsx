@@ -1,8 +1,10 @@
 // src/pages/DealerMaster.jsx - Dealer Master (Full CRUD Management)
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { Sidebar, AppHeader } from '../components/common/Navigation'
+import SmartSearchBar from '../components/common/SmartSearchBar'
+import Pagination from '../components/common/Pagination'
 
 const API_BASE_URL = '/api'
 
@@ -896,9 +898,17 @@ export default function DealerMaster() {
     const [error, setError] = useState('')
     const [successMessage, setSuccessMessage] = useState('')
 
-    // Filters
+    // Search and Checkbox Filters
     const [searchQuery, setSearchQuery] = useState('')
     const [statusFilter, setStatusFilter] = useState('all') // all, active, inactive
+    const [selectedStatuses, setSelectedStatuses] = useState([]) // ['active', 'inactive']
+    const [selectedCities, setSelectedCities] = useState([])
+    const [equipmentFilter, setEquipmentFilter] = useState([]) // ['has_equipment', 'no_equipment']
+    const [isFilterPanelExpanded, setIsFilterPanelExpanded] = useState(false)
+
+    // Record Selection & Batch Actions
+    const [selectedDealerIds, setSelectedDealerIds] = useState([])
+    const [batchLoading, setBatchLoading] = useState(false)
 
     // Modals
     const [isAddOpen, setIsAddOpen] = useState(false)
@@ -946,6 +956,215 @@ export default function DealerMaster() {
         } finally {
             setLoading(false)
         }
+    }
+
+    // Extract dynamic unique cities from dealers list
+    const availableCities = Array.from(new Set(
+        dealers.map(d => d.city).filter(Boolean).map(c => c.trim())
+    )).sort()
+
+    // Filtered Dealers based on search, checkboxes, and status tabs
+    const filteredDealers = dealers.filter(dealer => {
+        // Status checkboxes
+        if (selectedStatuses.length > 0) {
+            const matches = (selectedStatuses.includes('active') && dealer.is_active) ||
+                            (selectedStatuses.includes('inactive') && !dealer.is_active)
+            if (!matches) return false
+        }
+        // City checkboxes
+        if (selectedCities.length > 0) {
+            if (!dealer.city || !selectedCities.includes(dealer.city)) return false
+        }
+        // Equipment assignment checkboxes
+        if (equipmentFilter.length > 0) {
+            const hasEq = (dealer.equipment_count || 0) > 0
+            const matches = (equipmentFilter.includes('has_equipment') && hasEq) ||
+                            (equipmentFilter.includes('no_equipment') && !hasEq)
+            if (!matches) return false
+        }
+        return true
+    })
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1)
+    const [pageSize, setPageSize] = useState(10)
+
+    // Reset page when filters change
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [searchQuery, selectedStatuses, selectedCities, equipmentFilter])
+
+    // Paginated dealers slice
+    const paginatedDealers = useMemo(() => {
+        const start = (currentPage - 1) * pageSize
+        return filteredDealers.slice(start, start + pageSize)
+    }, [filteredDealers, currentPage, pageSize])
+
+    // Smart Search Options Groups for Dealer Master
+    const smartDealerGroups = [
+        {
+            id: 'status',
+            title: 'Status',
+            options: [
+                { id: 'active', label: 'Active Vendors', count: stats.activeDealers, color: '#10b981' },
+                { id: 'inactive', label: 'Inactive Vendors', count: stats.inactiveDealers, color: '#9ca3af' }
+            ]
+        },
+        {
+            id: 'city',
+            title: 'City / Location',
+            options: availableCities.map(city => ({
+                id: city,
+                label: city,
+                count: dealers.filter(d => d.city === city).length
+            }))
+        },
+        {
+            id: 'equipment',
+            title: 'Equipment',
+            options: [
+                { id: 'has_equipment', label: 'Has Equipment (> 0)', count: dealers.filter(d => (d.equipment_count || 0) > 0).length },
+                { id: 'no_equipment', label: 'No Equipment (0)', count: dealers.filter(d => (d.equipment_count || 0) === 0).length }
+            ]
+        }
+    ]
+
+    // Active filters count
+    const activeFilterCount =
+        selectedStatuses.length +
+        selectedCities.length +
+        equipmentFilter.length +
+        (searchQuery ? 1 : 0)
+
+    // Selection helpers
+    const isAllSelected = filteredDealers.length > 0 && selectedDealerIds.length === filteredDealers.length
+    const isSomeSelected = selectedDealerIds.length > 0 && selectedDealerIds.length < filteredDealers.length
+
+    const handleSelectAll = () => {
+        if (isAllSelected) {
+            setSelectedDealerIds([])
+        } else {
+            setSelectedDealerIds(filteredDealers.map(d => d.id))
+        }
+    }
+
+    const handleToggleDealer = (id) => {
+        setSelectedDealerIds(prev =>
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        )
+    }
+
+    const clearAllFilters = () => {
+        setSearchQuery('')
+        setSelectedStatuses([])
+        setSelectedCities([])
+        setEquipmentFilter([])
+        setStatusFilter('all')
+    }
+
+    // Batch Action Handlers
+    const handleBatchSetStatus = async (isActive) => {
+        if (selectedDealerIds.length === 0) return
+        try {
+            setBatchLoading(true)
+            const res = await fetch(`${API_BASE_URL}/dealers/batch-status`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: selectedDealerIds, is_active: isActive })
+            })
+            const data = await res.json()
+            if (data.success) {
+                setDealers(prev => prev.map(d => selectedDealerIds.includes(d.id) ? { ...d, is_active: isActive } : d))
+                showToast(`Successfully set ${selectedDealerIds.length} dealer(s) to ${isActive ? 'Active' : 'Inactive'}`)
+                setSelectedDealerIds([])
+                loadStats()
+            } else {
+                setError(data.message || 'Failed to update dealer status')
+            }
+        } catch (err) {
+            console.error('Batch status error:', err)
+            setError('Network error while updating dealers')
+        } finally {
+            setBatchLoading(false)
+        }
+    }
+
+    const handleBatchDeleteDealers = async (force = false) => {
+        if (selectedDealerIds.length === 0) return
+        const count = selectedDealerIds.length
+        if (!window.confirm(`⚠️ WARNING: Are you sure you want to delete ${count} selected dealer record(s)?`)) {
+            return
+        }
+        try {
+            setBatchLoading(true)
+            const res = await fetch(`${API_BASE_URL}/dealers/batch-delete`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: selectedDealerIds, force })
+            })
+            const data = await res.json()
+            if (data.success) {
+                setDealers(prev => prev.filter(d => !selectedDealerIds.includes(d.id)))
+                showToast(`Successfully deleted ${count} dealer(s)`)
+                setSelectedDealerIds([])
+                loadStats()
+            } else {
+                if (data.canForce) {
+                    if (window.confirm(`${data.message}\n\nWould you like to Force Delete and unlink all associated equipment?`)) {
+                        handleBatchDeleteDealers(true)
+                        return
+                    }
+                }
+                setError(data.message || 'Failed to delete selected dealers')
+            }
+        } catch (err) {
+            console.error('Batch delete error:', err)
+            setError('Network error while deleting dealers')
+        } finally {
+            setBatchLoading(false)
+        }
+    }
+
+    const handleExportDealersCSV = (onlySelected = false) => {
+        const itemsToExport = onlySelected
+            ? filteredDealers.filter(d => selectedDealerIds.includes(d.id))
+            : filteredDealers
+
+        if (itemsToExport.length === 0) {
+            alert('No dealers to export')
+            return
+        }
+
+        const headers = ['ID', 'Dealer Name', 'Address', 'City', 'Contact Person', 'Phone', 'Email', 'GST Number', 'Status', 'Equipment Count']
+        const csvRows = [headers.join(',')]
+
+        itemsToExport.forEach(d => {
+            const row = [
+                d.id,
+                `"${(d.name || '').replace(/"/g, '""')}"`,
+                `"${(d.address || '').replace(/"/g, '""')}"`,
+                `"${(d.city || '').replace(/"/g, '""')}"`,
+                `"${(d.contact_person || '').replace(/"/g, '""')}"`,
+                `"${(d.phone || '').replace(/"/g, '""')}"`,
+                `"${(d.email || '').replace(/"/g, '""')}"`,
+                `"${(d.gst_number || '').replace(/"/g, '""')}"`,
+                d.is_active ? 'Active' : 'Inactive',
+                d.equipment_count || 0
+            ]
+            csvRows.push(row.join(','))
+        })
+
+        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.setAttribute('href', url)
+        link.setAttribute('download', `dealers_export_${new Date().toISOString().slice(0, 10)}.csv`)
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        showToast(`Exported ${itemsToExport.length} dealer record(s) to CSV`)
     }
 
     useEffect(() => {
@@ -1153,75 +1372,137 @@ export default function DealerMaster() {
                         </div>
                     </div>
 
-                    {/* Filter and Search Bar */}
-                    <div className="bg-white p-4 rounded-2xl border border-gray-200/80 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-4">
-                        <form onSubmit={handleSearchSubmit} className="flex-1 w-full flex items-center space-x-2">
-                            <div className="relative flex-1">
-                                <svg className="w-5 h-5 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                </svg>
-                                <input
-                                    type="text"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="Search by dealer name, address, city, contact person, or GST..."
-                                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                    {/* Search and Action Toolbar */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-6 p-4 sm:p-5">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            {/* Unified Smart Search Bar */}
+                            <div className="flex-1 max-w-2xl">
+                                <SmartSearchBar
+                                    searchValue={searchQuery}
+                                    onSearchChange={(val) => setSearchQuery(val)}
+                                    placeholder="Search by dealer name, address, city, contact, GST..."
+                                    groups={smartDealerGroups}
+                                    selectedOptions={{
+                                        status: selectedStatuses,
+                                        city: selectedCities,
+                                        equipment: equipmentFilter
+                                    }}
+                                    onOptionToggle={(groupId, optId) => {
+                                        if (groupId === 'status') {
+                                            setSelectedStatuses(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
+                                        } else if (groupId === 'city') {
+                                            setSelectedCities(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
+                                        } else if (groupId === 'equipment') {
+                                            setEquipmentFilter(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
+                                        }
+                                    }}
+                                    onGroupSelectAll={(groupId, allIds) => {
+                                        if (groupId === 'status') setSelectedStatuses(allIds)
+                                        else if (groupId === 'city') setSelectedCities(allIds)
+                                        else if (groupId === 'equipment') setEquipmentFilter(allIds)
+                                    }}
+                                    onGroupClear={(groupId) => {
+                                        if (groupId === 'status') setSelectedStatuses([])
+                                        else if (groupId === 'city') setSelectedCities([])
+                                        else if (groupId === 'equipment') setEquipmentFilter([])
+                                    }}
+                                    onClearAll={() => {
+                                        setSearchQuery('')
+                                        setSelectedStatuses([])
+                                        setSelectedCities([])
+                                        setEquipmentFilter([])
+                                    }}
                                 />
                             </div>
-                            <button
-                                type="submit"
-                                className="px-4 py-2.5 bg-gray-900 hover:bg-black text-white text-sm font-semibold rounded-xl transition-colors"
-                            >
-                                Search
-                            </button>
-                            {searchQuery && (
+
+                            {/* Toolbar Buttons: Export CSV & Refresh */}
+                            <div className="flex items-center space-x-2 self-start lg:self-center flex-wrap">
+                                {/* Export CSV */}
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        setSearchQuery('')
-                                        setTimeout(loadDealers, 50)
-                                    }}
-                                    className="px-3 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded-xl"
+                                    onClick={() => handleExportDealersCSV(selectedDealerIds.length > 0)}
+                                    className="px-3.5 py-2.5 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 flex items-center space-x-1 shadow-2xs transition-colors"
+                                    title="Export dealers to CSV"
                                 >
-                                    Clear
+                                    <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    <span>{selectedDealerIds.length > 0 ? `Export (${selectedDealerIds.length})` : 'Export CSV'}</span>
                                 </button>
-                            )}
-                        </form>
 
-                        {/* Status Filter Tabs */}
-                        <div className="flex items-center space-x-1 bg-gray-100 p-1 rounded-xl self-stretch md:self-auto">
-                            <button
-                                onClick={() => setStatusFilter('all')}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === 'all' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-600 hover:text-gray-900'}`}
-                            >
-                                All ({stats.totalDealers})
-                            </button>
-                            <button
-                                onClick={() => setStatusFilter('active')}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === 'active' ? 'bg-white text-emerald-700 shadow-2xs' : 'text-gray-600 hover:text-gray-900'}`}
-                            >
-                                Active ({stats.activeDealers})
-                            </button>
-                            <button
-                                onClick={() => setStatusFilter('inactive')}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === 'inactive' ? 'bg-white text-gray-700 shadow-2xs' : 'text-gray-600 hover:text-gray-900'}`}
-                            >
-                                Inactive ({stats.inactiveDealers})
-                            </button>
-                            <button
-                                onClick={() => {
-                                    loadDealers()
-                                    loadStats()
-                                }}
-                                title="Refresh"
-                                className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors ml-1"
-                            >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                </svg>
-                            </button>
+                                {/* Refresh */}
+                                <button
+                                    onClick={() => {
+                                        loadDealers()
+                                        loadStats()
+                                    }}
+                                    title="Refresh list"
+                                    className="p-2.5 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-xl transition-colors border border-gray-200"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
+
+                    {/* Floating / Sticky Batch Actions Bar for Dealers */}
+                    {selectedDealerIds.length > 0 && (
+                        <div className="sticky top-4 z-40 mb-6 p-4 bg-gradient-to-r from-gray-900 to-indigo-950 text-white rounded-2xl shadow-2xl border border-indigo-700/50 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fadeIn">
+                            <div className="flex items-center space-x-3">
+                                <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-400 font-bold">
+                                    ✓
+                                </div>
+                                <div>
+                                    <span className="font-bold text-sm">
+                                        {selectedDealerIds.length} {selectedDealerIds.length === 1 ? 'dealer' : 'dealers'} selected
+                                    </span>
+                                    <p className="text-[11px] text-gray-300">Choose a bulk operation to execute on selected records</p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center flex-wrap gap-2.5">
+                                <button
+                                    onClick={() => handleBatchSetStatus(true)}
+                                    disabled={batchLoading}
+                                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center space-x-1"
+                                >
+                                    <span>Set Active</span>
+                                </button>
+
+                                <button
+                                    onClick={() => handleBatchSetStatus(false)}
+                                    disabled={batchLoading}
+                                    className="px-3.5 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center space-x-1"
+                                >
+                                    <span>Set Inactive</span>
+                                </button>
+
+                                <button
+                                    onClick={() => handleExportDealersCSV(true)}
+                                    className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center space-x-1"
+                                >
+                                    <span>Export CSV</span>
+                                </button>
+
+                                <button
+                                    onClick={() => handleBatchDeleteDealers(false)}
+                                    disabled={batchLoading}
+                                    className="px-3.5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center space-x-1"
+                                >
+                                    <span>Delete Selected</span>
+                                </button>
+
+                                <button
+                                    onClick={() => setSelectedDealerIds([])}
+                                    className="px-3 py-2 bg-white/10 hover:bg-white/20 text-gray-200 rounded-xl text-xs font-semibold transition-colors"
+                                >
+                                    Deselect All
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Dealers Table Card */}
                     <div className="bg-white rounded-2xl border border-gray-200/80 shadow-2xs overflow-hidden">
@@ -1241,7 +1522,7 @@ export default function DealerMaster() {
                                     Retry
                                 </button>
                             </div>
-                        ) : dealers.length === 0 ? (
+                        ) : filteredDealers.length === 0 ? (
                             <div className="py-20 text-center px-4">
                                 <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-500 flex items-center justify-center mx-auto mb-4">
                                     <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1250,13 +1531,16 @@ export default function DealerMaster() {
                                 </div>
                                 <h3 className="text-base font-bold text-gray-900 mb-1">No Dealers Found</h3>
                                 <p className="text-xs text-gray-500 max-w-sm mx-auto mb-4">
-                                    {searchQuery ? `No dealers matched your search "${searchQuery}".` : 'No dealers have been added yet.'}
+                                    {searchQuery || activeFilterCount > 0 ? 'No dealers matched your active filters.' : 'No dealers have been added yet.'}
                                 </p>
                                 <button
-                                    onClick={() => setIsAddOpen(true)}
+                                    onClick={() => {
+                                        clearAllFilters()
+                                        if (dealers.length === 0) setIsAddOpen(true)
+                                    }}
                                     className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md"
                                 >
-                                    + Add First Dealer
+                                    {dealers.length === 0 ? '+ Add First Dealer' : 'Reset Filters'}
                                 </button>
                             </div>
                         ) : (
@@ -1264,6 +1548,15 @@ export default function DealerMaster() {
                                 <table className="w-full text-left text-sm">
                                     <thead className="bg-gray-50/75 border-b border-gray-200 text-xs uppercase text-gray-500 font-bold tracking-wider">
                                         <tr>
+                                            <th className="px-4 py-4 w-12 text-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isAllSelected}
+                                                    ref={el => el && (el.indeterminate = isSomeSelected)}
+                                                    onChange={handleSelectAll}
+                                                    className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
+                                                />
+                                            </th>
                                             <th className="px-6 py-4">Dealer Name</th>
                                             <th className="px-6 py-4">Dealer Address</th>
                                             <th className="px-6 py-4">Contact Person</th>
@@ -1274,8 +1567,19 @@ export default function DealerMaster() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 font-normal text-gray-700">
-                                        {dealers.map(dealer => (
-                                            <tr key={dealer.id} className="hover:bg-blue-50/40 transition-colors group">
+                                        {paginatedDealers.map(dealer => {
+                                            const isSelected = selectedDealerIds.includes(dealer.id)
+                                            return (
+                                            <tr key={dealer.id} className={`hover:bg-blue-50/40 transition-colors group ${isSelected ? 'bg-indigo-50/60' : ''}`}>
+                                                {/* Row Checkbox */}
+                                                <td className="px-4 py-4 text-center">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => handleToggleDealer(dealer.id)}
+                                                        className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
+                                                    />
+                                                </td>
                                                 {/* Dealer Name */}
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center space-x-3">
@@ -1403,12 +1707,30 @@ export default function DealerMaster() {
                                                     </div>
                                                 </td>
                                             </tr>
-                                        ))}
+                                        )
+                                    })}
                                     </tbody>
                                 </table>
                             </div>
                         )}
                     </div>
+
+                    {/* Pagination */}
+                    {filteredDealers.length > 0 && (
+                        <Pagination
+                            currentPage={currentPage}
+                            totalItems={filteredDealers.length}
+                            pageSize={pageSize}
+                            onPageChange={setCurrentPage}
+                            onPageSizeChange={(newSize) => {
+                                setPageSize(newSize)
+                                setCurrentPage(1)
+                            }}
+                            pageSizeOptions={[10, 25, 50]}
+                            itemLabel="dealers"
+                            scrollToTop={true}
+                        />
+                    )}
                 </div>
             </div>
 

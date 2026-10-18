@@ -1,8 +1,10 @@
 // src/pages/UserManagement.jsx - Professional User Management with Sidebar
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { usersAPI } from '../services/api'
+import SmartSearchBar from '../components/common/SmartSearchBar'
+import Pagination from '../components/common/Pagination'
 
 export default function UserManagement() {
     // User management specific state
@@ -17,8 +19,8 @@ export default function UserManagement() {
     })
     const [filters, setFilters] = useState({
         search: '',
-        role: '',
-        status: ''
+        roles: [],
+        statuses: []
     })
     const [newUser, setNewUser] = useState({
         name: '',
@@ -215,8 +217,8 @@ export default function UserManagement() {
                     setShowUserMenu(false)
                 } else if (showNotifications) {
                     setShowNotifications(false)
-                } else if (filters.search || filters.role || filters.status) {
-                    setFilters({ search: '', role: '', status: '' })
+                } else if (filters.search || filters.roles?.length > 0 || filters.statuses?.length > 0) {
+                    setFilters({ search: '', roles: [], statuses: [] })
                 } else {
                     navigate(-1)
                 }
@@ -532,11 +534,49 @@ export default function UserManagement() {
         const matchesSearch = !filters.search || 
             (userItem.name && userItem.name.toLowerCase().includes(filters.search.toLowerCase())) ||
             (userItem.email && userItem.email.toLowerCase().includes(filters.search.toLowerCase()))
-        const matchesRole = !filters.role || userItem.role === filters.role
-        const matchesStatus = !filters.status || userItem.status === filters.status
+        const matchesRole = !filters.roles?.length || filters.roles.includes(userItem.role)
+        const userStatus = userItem.status || (userItem.is_active ? 'Active' : 'Inactive')
+        const matchesStatus = !filters.statuses?.length || filters.statuses.map(s => s.toLowerCase()).includes(userStatus.toLowerCase())
 
         return matchesSearch && matchesRole && matchesStatus
     })
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1)
+    const [pageSize, setPageSize] = useState(10)
+
+    // Reset page on filter changes
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [filters])
+
+    // Paginated users slice
+    const paginatedUsers = useMemo(() => {
+        const start = (currentPage - 1) * pageSize
+        return filteredUsers.slice(start, start + pageSize)
+    }, [filteredUsers, currentPage, pageSize])
+
+    // Smart Search Options Groups for Users
+    const userSearchGroups = [
+        {
+            id: 'roles',
+            title: 'User Role',
+            options: [
+                { id: 'student', label: 'Students', count: users.filter(u => u.role === 'student').length, color: '#10b981' },
+                { id: 'teacher', label: 'Teachers', count: users.filter(u => u.role === 'teacher').length, color: '#3b82f6' },
+                { id: 'lab_assistant', label: 'Lab Assistants', count: users.filter(u => u.role === 'lab_assistant').length, color: '#8b5cf6' },
+                { id: 'admin', label: 'Admins', count: users.filter(u => u.role === 'admin').length, color: '#ef4444' }
+            ]
+        },
+        {
+            id: 'statuses',
+            title: 'Account Status',
+            options: [
+                { id: 'Active', label: 'Active Users', count: users.filter(u => (u.status === 'Active' || u.is_active)).length, color: '#10b981' },
+                { id: 'Inactive', label: 'Inactive Users', count: users.filter(u => (u.status === 'Inactive' || (!u.is_active && u.is_active !== undefined))).length, color: '#9ca3af' }
+            ]
+        }
+    ]
     
     // Debug logging
     useEffect(() => {
@@ -970,41 +1010,38 @@ export default function UserManagement() {
                     </div>
 
                     {/* Search and Filters */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-                        <h3 className="text-lg font-medium text-gray-900 mb-4">Search & Filters</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <input
-                                type="text"
-                                name="search"
-                                placeholder="Search users..."
-                                value={filters.search}
-                                onChange={handleFilterChange}
-                                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                            <select
-                                name="role"
-                                value={filters.role}
-                                onChange={handleFilterChange}
-                                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                                <option value="">All Roles</option>
-                                <option value="student">Student</option>
-                                <option value="teacher">Teacher</option>
-                                <option value="lab_assistant">Lab Assistant</option>
-                                <option value="admin">Admin</option>
-                            </select>
-                            <select
-                                name="status"
-                                value={filters.status}
-                                onChange={handleFilterChange}
-                                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            >
-                                <option value="">All Status</option>
-                                <option value="Active">Active</option>
-                                <option value="Inactive">Inactive</option>
-                            </select>
-                            <div className="text-sm text-gray-600 flex items-center">
-                                Showing {filteredUsers.length} of {users.length} users
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-8 p-4 sm:p-5">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            <div className="flex-1 max-w-2xl">
+                                <SmartSearchBar
+                                    searchValue={filters.search}
+                                    onSearchChange={(val) => setFilters(prev => ({ ...prev, search: val }))}
+                                    placeholder="Search users by name, email, or role..."
+                                    groups={userSearchGroups}
+                                    selectedOptions={{
+                                        roles: filters.roles || [],
+                                        statuses: filters.statuses || []
+                                    }}
+                                    onOptionToggle={(groupId, optId) => {
+                                        setFilters(prev => {
+                                            const cur = prev[groupId] || [];
+                                            const next = cur.includes(optId)
+                                                ? cur.filter(x => x !== optId)
+                                                : [...cur, optId];
+                                            return { ...prev, [groupId]: next };
+                                        });
+                                    }}
+                                    onGroupSelectAll={(groupId, allIds) => {
+                                        setFilters(prev => ({ ...prev, [groupId]: allIds }));
+                                    }}
+                                    onGroupClear={(groupId) => {
+                                        setFilters(prev => ({ ...prev, [groupId]: [] }));
+                                    }}
+                                    onClearAll={() => setFilters({ search: '', roles: [], statuses: [] })}
+                                />
+                            </div>
+                            <div className="text-xs sm:text-sm font-semibold text-gray-600 bg-gray-50 border border-gray-200 px-4 py-2.5 rounded-xl self-start lg:self-center">
+                                Showing <span className="text-blue-600 font-bold">{filteredUsers.length}</span> of <span className="font-bold text-gray-900">{users.length}</span> users
                             </div>
                         </div>
                     </div>
@@ -1030,8 +1067,8 @@ export default function UserManagement() {
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
-                                    {filteredUsers.length > 0 ? (
-                                        filteredUsers.map((userItem) => (
+                                    {paginatedUsers.length > 0 ? (
+                                        paginatedUsers.map((userItem) => (
                                             <tr key={userItem._rowKey} className="hover:bg-gray-50">
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                                     #{userItem.id}
@@ -1132,6 +1169,23 @@ export default function UserManagement() {
                             </table>
                         </div>
                     </div>
+
+                    {/* Pagination */}
+                    {filteredUsers.length > 0 && (
+                        <Pagination
+                            currentPage={currentPage}
+                            totalItems={filteredUsers.length}
+                            pageSize={pageSize}
+                            onPageChange={setCurrentPage}
+                            onPageSizeChange={(newSize) => {
+                                setPageSize(newSize)
+                                setCurrentPage(1)
+                            }}
+                            pageSizeOptions={[10, 25, 50]}
+                            itemLabel="users"
+                            scrollToTop={true}
+                        />
+                    )}
 
                     {/* Role Permissions */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">

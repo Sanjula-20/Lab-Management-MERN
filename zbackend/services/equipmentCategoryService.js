@@ -7,13 +7,34 @@ class EquipmentCategoryService {
      * Get all equipment categories with counts and search filters
      */
     async getAllCategories(filters = {}) {
-        const { search, status = 'all' } = filters;
+        const { search, status = 'all', color } = filters;
         const whereClause = {};
 
-        if (status === 'active') {
-            whereClause.is_active = true;
-        } else if (status === 'inactive') {
-            whereClause.is_active = false;
+        if (status) {
+            let statuses = [];
+            if (Array.isArray(status)) {
+                statuses = status;
+            } else if (typeof status === 'string' && status !== 'all') {
+                statuses = status.split(',').map(s => s.trim().toLowerCase());
+            }
+
+            if (statuses.length > 0) {
+                const bools = [];
+                if (statuses.includes('active')) bools.push(true);
+                if (statuses.includes('inactive')) bools.push(false);
+                if (bools.length === 1) {
+                    whereClause.is_active = bools[0];
+                } else if (bools.length === 0) {
+                    whereClause.is_active = null; // empty match
+                }
+            }
+        }
+
+        if (color) {
+            const colors = Array.isArray(color) ? color : color.split(',').map(c => c.trim().toLowerCase());
+            if (colors.length > 0) {
+                whereClause.color = { [Op.in]: colors };
+            }
         }
 
         if (search && search.trim()) {
@@ -276,6 +297,68 @@ class EquipmentCategoryService {
         return {
             success: true,
             message: `Category "${category.name}" was successfully deleted.`
+        };
+    }
+
+    /**
+     * Batch set active status for multiple categories
+     */
+    async batchSetStatus(ids, isActive) {
+        if (!Array.isArray(ids) || ids.length === 0) {
+            throw new Error('No category IDs provided for batch status update');
+        }
+        const [updatedCount] = await EquipmentCategory.update(
+            { is_active: Boolean(isActive) },
+            { where: { id: { [Op.in]: ids } } }
+        );
+        return {
+            updatedCount,
+            message: `Successfully set ${updatedCount} category/categories to ${isActive ? 'Active' : 'Inactive'}`
+        };
+    }
+
+    /**
+     * Batch delete categories
+     */
+    async batchDeleteCategories(ids, force = false) {
+        if (!Array.isArray(ids) || ids.length === 0) {
+            throw new Error('No category IDs provided for batch deletion');
+        }
+
+        const categories = await EquipmentCategory.findAll({
+            where: { id: { [Op.in]: ids } }
+        });
+
+        if (categories.length === 0) {
+            return { deletedCount: 0, unlinkedCount: 0, message: 'No matching categories found' };
+        }
+
+        const codes = categories.map(c => c.code);
+        const linkedCount = await Equipment.count({
+            where: { category: { [Op.in]: codes } }
+        });
+
+        if (linkedCount > 0 && !force) {
+            throw new Error(`Cannot delete selected categories because ${linkedCount} equipment item(s) are assigned to them. Please reassign equipment or choose force delete.`);
+        }
+
+        let unlinkedCount = 0;
+        if (linkedCount > 0 && force) {
+            const [reassigned] = await Equipment.update(
+                { category: 'other' },
+                { where: { category: { [Op.in]: codes } } }
+            );
+            unlinkedCount = reassigned;
+        }
+
+        const deletedCount = await EquipmentCategory.destroy({
+            where: { id: { [Op.in]: ids } }
+        });
+
+        return {
+            deletedCount,
+            unlinkedCount,
+            message: `Successfully deleted ${deletedCount} category/categories${unlinkedCount > 0 ? ` (${unlinkedCount} items reassigned to 'other')` : ''}`
         };
     }
 }

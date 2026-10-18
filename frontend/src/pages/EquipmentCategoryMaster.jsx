@@ -1,8 +1,10 @@
 // src/pages/EquipmentCategoryMaster.jsx - Equipment Category Master (Full CRUD)
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { Sidebar, AppHeader } from '../components/common/Navigation'
+import SmartSearchBar from '../components/common/SmartSearchBar'
+import Pagination from '../components/common/Pagination'
 
 const API_BASE_URL = '/api'
 
@@ -1047,9 +1049,19 @@ export default function EquipmentCategoryMaster() {
     const [error, setError] = useState('')
     const [toastMessage, setToastMessage] = useState(null)
 
-    // Filters
+    // Checkbox-based Filters
     const [searchTerm, setSearchTerm] = useState('')
-    const [statusFilter, setStatusFilter] = useState('all') // 'all', 'active', 'inactive'
+    const [selectedStatuses, setSelectedStatuses] = useState(['active', 'inactive'])
+    const [selectedEquipmentFilter, setSelectedEquipmentFilter] = useState(['has_equipment', 'no_equipment'])
+    const [selectedColors, setSelectedColors] = useState([])
+    const [isFilterPanelExpanded, setIsFilterPanelExpanded] = useState(false)
+
+    // Selection & Batch Action State
+    const [selectedCategoryIds, setSelectedCategoryIds] = useState([])
+    const [isBatchUpdating, setIsBatchUpdating] = useState(false)
+    const [isBatchDeleting, setIsBatchDeleting] = useState(false)
+    const [batchDeleteModalOpen, setBatchDeleteModalOpen] = useState(false)
+    const [batchDeleteForce, setBatchDeleteForce] = useState(false)
 
     // Modal state
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -1077,11 +1089,7 @@ export default function EquipmentCategoryMaster() {
     const fetchCategories = async () => {
         try {
             setError('')
-            const queryParams = new URLSearchParams()
-            if (searchTerm.trim()) queryParams.append('search', searchTerm.trim())
-            if (statusFilter !== 'all') queryParams.append('status', statusFilter)
-
-            const url = `${API_BASE_URL}/equipment-categories?${queryParams.toString()}`
+            const url = `${API_BASE_URL}/equipment-categories`
             const res = await fetch(url, { credentials: 'include' })
             const data = await res.json()
 
@@ -1103,15 +1111,7 @@ export default function EquipmentCategoryMaster() {
     useEffect(() => {
         fetchStats()
         fetchCategories()
-    }, [statusFilter])
-
-    // Search debounce
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            fetchCategories()
-        }, 300)
-        return () => clearTimeout(timer)
-    }, [searchTerm])
+    }, [])
 
     const handleRefresh = async () => {
         setIsRefreshing(true)
@@ -1132,9 +1132,222 @@ export default function EquipmentCategoryMaster() {
 
     const handleCategoryDeleted = (deletedId) => {
         showToast('Category deleted successfully!')
+        setSelectedCategoryIds(prev => prev.filter(id => id !== deletedId))
         fetchStats()
         fetchCategories()
     }
+
+    // Filtered categories
+    const filteredCategories = categories.filter(cat => {
+        // Search text matching
+        if (searchTerm.trim()) {
+            const q = searchTerm.toLowerCase()
+            const matchesName = cat.name?.toLowerCase().includes(q)
+            const matchesCode = cat.code?.toLowerCase().includes(q)
+            const matchesDesc = cat.description?.toLowerCase().includes(q)
+            if (!matchesName && !matchesCode && !matchesDesc) return false
+        }
+
+        // Status checkbox filter
+        if (selectedStatuses.length === 1) {
+            if (selectedStatuses.includes('active') && !cat.is_active) return false
+            if (selectedStatuses.includes('inactive') && cat.is_active) return false
+        } else if (selectedStatuses.length === 0) {
+            return false
+        }
+
+        // Equipment linkage filter
+        const eqCount = cat.equipment_count || 0
+        if (selectedEquipmentFilter.length === 1) {
+            if (selectedEquipmentFilter.includes('has_equipment') && eqCount === 0) return false
+            if (selectedEquipmentFilter.includes('no_equipment') && eqCount > 0) return false
+        } else if (selectedEquipmentFilter.length === 0) {
+            return false
+        }
+
+        // Color theme filter
+        if (selectedColors.length > 0) {
+            if (!selectedColors.includes(cat.color || 'blue')) return false
+        }
+
+        return true
+    })
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1)
+    const [pageSize, setPageSize] = useState(10)
+
+    // Reset page on filter changes
+    useEffect(() => {
+        setCurrentPage(1)
+    }, [searchTerm, selectedStatuses, selectedEquipmentFilter, selectedColors])
+
+    // Paginated categories slice
+    const paginatedCategories = useMemo(() => {
+        const start = (currentPage - 1) * pageSize
+        return filteredCategories.slice(start, start + pageSize)
+    }, [filteredCategories, currentPage, pageSize])
+
+    // Smart Search Options Groups for Category Master
+    const smartCategoryGroups = [
+        {
+            id: 'status',
+            title: 'Status',
+            options: [
+                { id: 'active', label: 'Active Categories', count: stats.activeCategories, color: '#10b981' },
+                { id: 'inactive', label: 'Inactive Categories', count: stats.inactiveCategories, color: '#9ca3af' }
+            ]
+        },
+        {
+            id: 'equipment',
+            title: 'Equipment Linked',
+            options: [
+                { id: 'has_equipment', label: 'Has Equipment (> 0)', count: categories.filter(c => (c.equipment_count || 0) > 0).length },
+                { id: 'no_equipment', label: 'No Equipment (0)', count: categories.filter(c => (c.equipment_count || 0) === 0).length }
+            ]
+        },
+        {
+            id: 'color',
+            title: 'Color Palette',
+            options: COLOR_THEMES.map(theme => ({
+                id: theme.id,
+                label: theme.label,
+                color: theme.hex,
+                count: categories.filter(c => (c.color || 'blue') === theme.id).length
+            }))
+        }
+    ]
+
+    // Active filter badge count
+    const activeFilterCount =
+        (searchTerm.trim() ? 1 : 0) +
+        (selectedStatuses.length < 2 ? 1 : 0) +
+        (selectedEquipmentFilter.length < 2 ? 1 : 0) +
+        selectedColors.length
+
+    const clearAllFilters = () => {
+        setSearchTerm('')
+        setSelectedStatuses(['active', 'inactive'])
+        setSelectedEquipmentFilter(['has_equipment', 'no_equipment'])
+        setSelectedColors([])
+    }
+
+    // Selection toggle handlers
+    const handleToggleSelect = (id) => {
+        setSelectedCategoryIds(prev =>
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        )
+    }
+
+    const handleSelectAllToggle = () => {
+        const visibleIds = filteredCategories.map(c => c.id)
+        const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedCategoryIds.includes(id))
+        if (allVisibleSelected) {
+            setSelectedCategoryIds(prev => prev.filter(id => !visibleIds.includes(id)))
+        } else {
+            setSelectedCategoryIds(prev => Array.from(new Set([...prev, ...visibleIds])))
+        }
+    }
+
+    // CSV export
+    const handleExportCategoriesCSV = (onlySelected = false) => {
+        const listToExport = onlySelected
+            ? filteredCategories.filter(c => selectedCategoryIds.includes(c.id))
+            : filteredCategories
+
+        if (listToExport.length === 0) {
+            showToast('No categories to export', 'error')
+            return
+        }
+
+        const headers = ['Category Name', 'Code Slug', 'Description', 'Theme', 'Icon', 'Equipment Linked', 'Status', 'Created Date']
+        const csvRows = [
+            headers.join(','),
+            ...listToExport.map(cat => [
+                `"${(cat.name || '').replace(/"/g, '""')}"`,
+                `"${(cat.code || '').replace(/"/g, '""')}"`,
+                `"${(cat.description || '').replace(/"/g, '""')}"`,
+                `"${cat.color || 'blue'}"`,
+                `"${cat.icon || 'desktop'}"`,
+                cat.equipment_count || 0,
+                cat.is_active ? 'Active' : 'Inactive',
+                `"${formatDate(cat.createdAt || cat.created_at)}"`
+            ].join(','))
+        ]
+
+        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.setAttribute('href', url)
+        link.setAttribute('download', `equipment_categories_${new Date().toISOString().split('T')[0]}.csv`)
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+        showToast(`Exported ${listToExport.length} categor${listToExport.length === 1 ? 'y' : 'ies'} to CSV`)
+    }
+
+    // Batch status update
+    const handleBatchSetStatus = async (isActive) => {
+        if (selectedCategoryIds.length === 0) return
+        setIsBatchUpdating(true)
+        try {
+            const res = await fetch(`${API_BASE_URL}/equipment-categories/batch-status`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: selectedCategoryIds, is_active: isActive })
+            })
+            const data = await res.json()
+            if (data.success) {
+                showToast(data.message || `Categories set to ${isActive ? 'Active' : 'Inactive'}`)
+                setSelectedCategoryIds([])
+                fetchCategories()
+                fetchStats()
+            } else {
+                throw new Error(data.message || 'Batch update failed')
+            }
+        } catch (err) {
+            console.error('Batch status error:', err)
+            showToast(err.message, 'error')
+        } finally {
+            setIsBatchUpdating(false)
+        }
+    }
+
+    // Batch delete
+    const handleBatchDelete = async () => {
+        if (selectedCategoryIds.length === 0) return
+        setIsBatchDeleting(true)
+        try {
+            const res = await fetch(`${API_BASE_URL}/equipment-categories/batch-delete`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: selectedCategoryIds, force: batchDeleteForce })
+            })
+            const data = await res.json()
+            if (data.success) {
+                showToast(data.message || 'Categories deleted successfully')
+                setSelectedCategoryIds([])
+                setBatchDeleteModalOpen(false)
+                setBatchDeleteForce(false)
+                fetchCategories()
+                fetchStats()
+            } else {
+                throw new Error(data.message || 'Batch delete failed')
+            }
+        } catch (err) {
+            console.error('Batch delete error:', err)
+            showToast(err.message, 'error')
+        } finally {
+            setIsBatchDeleting(false)
+        }
+    }
+
+    // Selected categories with linked equipment
+    const selectedWithEquipment = categories.filter(c => selectedCategoryIds.includes(c.id) && (c.equipment_count || 0) > 0)
+    const totalEquipmentLinkedToSelected = selectedWithEquipment.reduce((acc, c) => acc + (c.equipment_count || 0), 0)
 
     return (
         <div className="min-h-screen w-full bg-gray-50 flex overflow-x-hidden">
@@ -1277,44 +1490,58 @@ export default function EquipmentCategoryMaster() {
                         </div>
                     </div>
 
-                    {/* Filter and Search Bar */}
-                    <div className="bg-white rounded-2xl shadow-xs border border-gray-200/80 p-4 sm:p-5">
-                        <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center">
-                            {/* Search */}
-                            <div className="flex-1 relative min-w-0">
-                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                    </svg>
-                                </div>
-                                <input
-                                    type="text"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
+                    {/* Search and Action Toolbar */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-6 p-4 sm:p-5">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            {/* Unified Smart Search Bar */}
+                            <div className="flex-1 max-w-2xl">
+                                <SmartSearchBar
+                                    searchValue={searchTerm}
+                                    onSearchChange={(val) => setSearchTerm(val)}
                                     placeholder="Search categories by name, code slug, or description..."
-                                    className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                                    groups={smartCategoryGroups}
+                                    selectedOptions={{
+                                        status: selectedStatuses,
+                                        equipment: selectedEquipmentFilter,
+                                        color: selectedColors
+                                    }}
+                                    onOptionToggle={(groupId, optId) => {
+                                        if (groupId === 'status') {
+                                            setSelectedStatuses(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
+                                        } else if (groupId === 'equipment') {
+                                            setSelectedEquipmentFilter(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
+                                        } else if (groupId === 'color') {
+                                            setSelectedColors(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
+                                        }
+                                    }}
+                                    onGroupSelectAll={(groupId, allIds) => {
+                                        if (groupId === 'status') setSelectedStatuses(allIds)
+                                        else if (groupId === 'equipment') setSelectedEquipmentFilter(allIds)
+                                        else if (groupId === 'color') setSelectedColors(allIds)
+                                    }}
+                                    onGroupClear={(groupId) => {
+                                        if (groupId === 'status') setSelectedStatuses([])
+                                        else if (groupId === 'equipment') setSelectedEquipmentFilter([])
+                                        else if (groupId === 'color') setSelectedColors([])
+                                    }}
+                                    onClearAll={clearAllFilters}
                                 />
-                                {searchTerm && (
-                                    <button
-                                        onClick={() => setSearchTerm('')}
-                                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 text-xs"
-                                    >
-                                        ✕
-                                    </button>
-                                )}
                             </div>
 
-                            {/* Status Filter */}
-                            <div className="flex items-center gap-2.5">
-                                <select
-                                    value={statusFilter}
-                                    onChange={(e) => setStatusFilter(e.target.value)}
-                                    className="px-3.5 py-2.5 text-xs sm:text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white font-medium"
+                            {/* Toolbar Buttons: Export CSV & Refresh */}
+                            <div className="flex items-center gap-2 flex-wrap self-start lg:self-center">
+                                {/* Export CSV */}
+                                <button
+                                    type="button"
+                                    onClick={() => handleExportCategoriesCSV(selectedCategoryIds.length > 0)}
+                                    className="px-3.5 py-2.5 bg-white hover:bg-gray-50 border border-gray-300 rounded-xl text-xs sm:text-sm font-semibold text-gray-700 flex items-center gap-1.5 shadow-2xs transition-colors"
+                                    title="Export categories to CSV"
                                 >
-                                    <option value="all">All Statuses</option>
-                                    <option value="active">Active Only</option>
-                                    <option value="inactive">Inactive Only</option>
-                                </select>
+                                    <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    <span>{selectedCategoryIds.length > 0 ? `Export (${selectedCategoryIds.length})` : 'Export CSV'}</span>
+                                </button>
 
                                 {/* Refresh Button */}
                                 <button
@@ -1341,21 +1568,93 @@ export default function EquipmentCategoryMaster() {
                         </div>
                     </div>
 
+                    {/* Floating / Sticky Batch Actions Bar for Equipment Categories */}
+                    {selectedCategoryIds.length > 0 && (
+                        <div className="sticky top-4 z-40 p-4 bg-gradient-to-r from-gray-900 to-blue-950 text-white rounded-2xl shadow-2xl border border-blue-700/50 flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-3 duration-200">
+                            <div className="flex items-center space-x-3">
+                                <div className="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-400 font-bold">
+                                    ✓
+                                </div>
+                                <div>
+                                    <span className="font-bold text-sm">
+                                        {selectedCategoryIds.length} {selectedCategoryIds.length === 1 ? 'category' : 'categories'} selected
+                                    </span>
+                                    <p className="text-[11px] text-blue-200">Apply batch status changes, export, or bulk deletion</p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center space-x-2 flex-wrap justify-end">
+                                {/* Set Active */}
+                                <button
+                                    type="button"
+                                    onClick={() => handleBatchSetStatus(true)}
+                                    disabled={isBatchUpdating}
+                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 rounded-xl text-xs font-bold transition flex items-center space-x-1 shadow-xs disabled:opacity-50"
+                                >
+                                    <span>Set Active</span>
+                                </button>
+
+                                {/* Set Inactive */}
+                                <button
+                                    type="button"
+                                    onClick={() => handleBatchSetStatus(false)}
+                                    disabled={isBatchUpdating}
+                                    className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-xl text-xs font-bold transition flex items-center space-x-1 shadow-xs disabled:opacity-50"
+                                >
+                                    <span>Set Inactive</span>
+                                </button>
+
+                                {/* Export Selected CSV */}
+                                <button
+                                    type="button"
+                                    onClick={() => handleExportCategoriesCSV(true)}
+                                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-xl text-xs font-bold transition flex items-center space-x-1 shadow-xs"
+                                >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    <span>Export CSV</span>
+                                </button>
+
+                                {/* Batch Delete */}
+                                <button
+                                    type="button"
+                                    onClick={() => setBatchDeleteModalOpen(true)}
+                                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 rounded-xl text-xs font-bold transition flex items-center space-x-1 shadow-xs"
+                                >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                    <span>Delete Selected</span>
+                                </button>
+
+                                {/* Deselect All */}
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedCategoryIds([])}
+                                    className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-medium transition"
+                                >
+                                    Deselect All
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Categories Table Container */}
                     <div className="bg-white rounded-2xl shadow-xs border border-gray-200/80 overflow-hidden">
                         <div className="px-5 py-4 border-b border-gray-200/80 flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <h2 className="text-base font-bold text-gray-900">
-                                    Categories ({categories.length})
+                                    Categories ({filteredCategories.length}{filteredCategories.length !== categories.length ? ` of ${categories.length}` : ''})
                                 </h2>
-                                {(searchTerm || statusFilter !== 'all') && (
+                                {activeFilterCount > 0 && (
                                     <span className="text-xs bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded-full border border-blue-200">
                                         Filtered
                                     </span>
                                 )}
                             </div>
                             <span className="text-xs text-gray-500">
-                                Hover over action icons to view options
+                                Click row checkbox to select for batch operations
                             </span>
                         </div>
 
@@ -1370,7 +1669,7 @@ export default function EquipmentCategoryMaster() {
                                 <div className="w-10 h-10 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-3"></div>
                                 <p className="text-sm font-semibold text-gray-500">Loading equipment categories...</p>
                             </div>
-                        ) : categories.length === 0 ? (
+                        ) : filteredCategories.length === 0 ? (
                             <div className="p-16 text-center">
                                 <div className="w-14 h-14 rounded-2xl bg-gray-100 text-gray-400 flex items-center justify-center mx-auto mb-3">
                                     <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1379,16 +1678,13 @@ export default function EquipmentCategoryMaster() {
                                 </div>
                                 <h3 className="text-sm font-bold text-gray-900">No categories found</h3>
                                 <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
-                                    {searchTerm || statusFilter !== 'all'
-                                        ? 'No categories match your search filters. Try clearing the search query.'
+                                    {activeFilterCount > 0
+                                        ? 'No categories match your active filters. Try adjusting your search query or checkbox filters.'
                                         : 'Get started by creating your first equipment category.'}
                                 </p>
-                                {searchTerm || statusFilter !== 'all' ? (
+                                {activeFilterCount > 0 ? (
                                     <button
-                                        onClick={() => {
-                                            setSearchTerm('')
-                                            setStatusFilter('all')
-                                        }}
+                                        onClick={clearAllFilters}
                                         className="mt-4 px-3.5 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition"
                                     >
                                         Clear all filters
@@ -1407,7 +1703,17 @@ export default function EquipmentCategoryMaster() {
                                 <table className="w-full divide-y divide-gray-200/80 text-left">
                                     <thead className="bg-gray-50/80 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                                         <tr>
-                                            <th scope="col" className="px-5 py-3.5">Category Name</th>
+                                            {/* Master Checkbox */}
+                                            <th scope="col" className="px-4 py-3.5 w-10 text-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={filteredCategories.length > 0 && filteredCategories.every(c => selectedCategoryIds.includes(c.id))}
+                                                    onChange={handleSelectAllToggle}
+                                                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                                    title="Select all visible categories"
+                                                />
+                                            </th>
+                                            <th scope="col" className="px-4 py-3.5">Category Name</th>
                                             <th scope="col" className="px-4 py-3.5">Code Slug</th>
                                             <th scope="col" className="px-4 py-3.5">Description</th>
                                             <th scope="col" className="px-4 py-3.5 text-center">Equipment Linked</th>
@@ -1417,15 +1723,30 @@ export default function EquipmentCategoryMaster() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 bg-white text-xs">
-                                        {categories.map(cat => {
+                                        {paginatedCategories.map(cat => {
                                             const theme = getColorTheme(cat.color)
+                                            const isSelected = selectedCategoryIds.includes(cat.id)
                                             return (
                                                 <tr
                                                     key={cat.id}
-                                                    className="hover:bg-blue-50/30 transition-colors group"
+                                                    className={`transition-colors group ${
+                                                        isSelected
+                                                            ? 'bg-blue-50/60 hover:bg-blue-50/80'
+                                                            : 'hover:bg-blue-50/30'
+                                                    }`}
                                                 >
+                                                    {/* Row Checkbox */}
+                                                    <td className="px-4 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => handleToggleSelect(cat.id)}
+                                                            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                                        />
+                                                    </td>
+
                                                     {/* 1. Category Name & Icon */}
-                                                    <td className="px-5 py-3.5 whitespace-nowrap">
+                                                    <td className="px-4 py-3.5 whitespace-nowrap">
                                                         <div className="flex items-center space-x-3">
                                                             <div className={`w-9 h-9 rounded-xl flex items-center justify-center border shadow-2xs ${theme.badge}`}>
                                                                 <CategoryIcon icon={cat.icon} className="w-5 h-5" />
@@ -1568,6 +1889,23 @@ export default function EquipmentCategoryMaster() {
                             </div>
                         )}
                     </div>
+
+                    {/* Pagination */}
+                    {filteredCategories.length > 0 && (
+                        <Pagination
+                            currentPage={currentPage}
+                            totalItems={filteredCategories.length}
+                            pageSize={pageSize}
+                            onPageChange={setCurrentPage}
+                            onPageSizeChange={(newSize) => {
+                                setPageSize(newSize)
+                                setCurrentPage(1)
+                            }}
+                            pageSizeOptions={[10, 25, 50]}
+                            itemLabel="categories"
+                            scrollToTop={true}
+                        />
+                    )}
                 </main>
             </div>
 
@@ -1598,6 +1936,121 @@ export default function EquipmentCategoryMaster() {
                 onClose={() => setSelectedCategoryForDelete(null)}
                 onCategoryDeleted={handleCategoryDeleted}
             />
+
+            <BatchDeleteCategoriesModal
+                isOpen={batchDeleteModalOpen}
+                onClose={() => {
+                    setBatchDeleteModalOpen(false)
+                    setBatchDeleteForce(false)
+                }}
+                selectedCount={selectedCategoryIds.length}
+                totalLinkedEquipment={totalEquipmentLinkedToSelected}
+                force={batchDeleteForce}
+                setForce={setBatchDeleteForce}
+                onConfirm={handleBatchDelete}
+                loading={isBatchDeleting}
+            />
+        </div>
+    )
+}
+
+// -------------------------------------------------------------
+// BATCH DELETE CATEGORIES MODAL
+// -------------------------------------------------------------
+function BatchDeleteCategoriesModal({
+    isOpen,
+    onClose,
+    selectedCount,
+    totalLinkedEquipment,
+    force,
+    setForce,
+    onConfirm,
+    loading
+}) {
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' && isOpen) onClose()
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isOpen, onClose])
+
+    if (!isOpen) return null
+
+    const hasLinked = totalLinkedEquipment > 0
+
+    return (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <div className="p-6">
+                    <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                    </div>
+
+                    <h3 className="text-lg font-bold text-gray-900 text-center">
+                        Delete {selectedCount} Selected Categories?
+                    </h3>
+
+                    {hasLinked ? (
+                        <div className="mt-4 p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-2">
+                            <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.982 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                </svg>
+                                <span>{totalLinkedEquipment} Equipment Items Linked</span>
+                            </div>
+                            <p>
+                                One or more selected categories have <strong>{totalLinkedEquipment}</strong> equipment item(s) assigned.
+                            </p>
+                            <label className="flex items-start gap-2 pt-1 font-semibold text-amber-950 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={force}
+                                    onChange={(e) => setForce(e.target.checked)}
+                                    className="mt-0.5 rounded text-red-600 focus:ring-red-500"
+                                />
+                                <span>Force delete and reassign all linked equipment to the 'Other' category.</span>
+                            </label>
+                        </div>
+                    ) : (
+                        <p className="mt-3 text-xs text-gray-500 text-center">
+                            Are you sure you want to permanently delete these {selectedCount} categories? This action cannot be undone.
+                        </p>
+                    )}
+
+                    <div className="mt-6 flex items-center justify-end space-x-3">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onConfirm}
+                            disabled={loading || (hasLinked && !force)}
+                            className="px-5 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-md transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            {loading ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                    <span>Deleting...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6" />
+                                    </svg>
+                                    <span>{hasLinked ? 'Force Delete & Reassign' : 'Confirm Delete'}</span>
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     )
 }

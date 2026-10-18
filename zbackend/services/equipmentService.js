@@ -92,6 +92,8 @@ class EquipmentService {
             lab_id,
             status,
             category,
+            brand,
+            condition_status,
             search,
             page = 1,
             limit = 1000
@@ -99,9 +101,41 @@ class EquipmentService {
 
         const whereClause = { is_active: true };
 
-        if (lab_id) whereClause.lab_id = lab_id;
-        if (status) whereClause.status = status;
-        if (category) whereClause.category = category;
+        // Helper to parse single or multi-value filter (supports comma-separated string or array)
+        const parseMultiFilter = (val) => {
+            if (!val) return null;
+            if (Array.isArray(val)) return val.filter(Boolean);
+            if (typeof val === 'string') {
+                const parts = val.split(',').map(s => s.trim()).filter(Boolean);
+                return parts.length > 0 ? parts : null;
+            }
+            return [val];
+        };
+
+        const labIds = parseMultiFilter(lab_id);
+        if (labIds && labIds.length > 0) {
+            whereClause.lab_id = labIds.length === 1 ? labIds[0] : { [Op.in]: labIds };
+        }
+
+        const statuses = parseMultiFilter(status);
+        if (statuses && statuses.length > 0) {
+            whereClause.status = statuses.length === 1 ? statuses[0] : { [Op.in]: statuses };
+        }
+
+        const categories = parseMultiFilter(category);
+        if (categories && categories.length > 0) {
+            whereClause.category = categories.length === 1 ? categories[0] : { [Op.in]: categories };
+        }
+
+        const brands = parseMultiFilter(brand);
+        if (brands && brands.length > 0) {
+            whereClause.brand = brands.length === 1 ? brands[0] : { [Op.in]: brands };
+        }
+
+        const conditions = parseMultiFilter(condition_status);
+        if (conditions && conditions.length > 0) {
+            whereClause.condition_status = conditions.length === 1 ? conditions[0] : { [Op.in]: conditions };
+        }
 
         if (search) {
             whereClause[Op.or] = [
@@ -416,6 +450,55 @@ class EquipmentService {
     }
 
     /**
+     * Batch update status for multiple equipment items
+     */
+    async batchUpdateStatus(ids, status, userId, userRole) {
+        if (!Array.isArray(ids) || ids.length === 0) {
+            throw new Error('Equipment IDs are required');
+        }
+        const validStatuses = ['available', 'in_use', 'maintenance', 'broken', 'retired'];
+        if (!validStatuses.includes(status)) {
+            throw new Error(`Invalid status: ${status}`);
+        }
+
+        const [updatedCount] = await Equipment.update(
+            { status },
+            {
+                where: {
+                    id: { [Op.in]: ids },
+                    is_active: true
+                }
+            }
+        );
+
+        return { updatedCount, status };
+    }
+
+    /**
+     * Batch delete multiple equipment items
+     */
+    async batchDeleteEquipment(ids, userId, userRole) {
+        if (!Array.isArray(ids) || ids.length === 0) {
+            throw new Error('Equipment IDs are required');
+        }
+        if (userRole !== 'admin') {
+            throw new Error('Only administrators can perform batch deletion');
+        }
+
+        const [deletedCount] = await Equipment.update(
+            { is_active: false },
+            {
+                where: {
+                    id: { [Op.in]: ids },
+                    is_active: true
+                }
+            }
+        );
+
+        return { deletedCount };
+    }
+
+    /**
      * Bulk import equipment
      */
     async bulkImportEquipment(equipmentDataArray, userId) {
@@ -601,6 +684,62 @@ class EquipmentService {
         return {
             deletedCount: equipmentCount,
             labName: lab.name
+        };
+    }
+
+    /**
+     * Batch update status for multiple equipment items
+     */
+    async batchUpdateStatus(ids, newStatus, userId) {
+        if (!Array.isArray(ids) || ids.length === 0) {
+            throw new Error('Please select at least one equipment item');
+        }
+
+        const validStatuses = ['available', 'in_use', 'maintenance', 'broken', 'retired'];
+        if (!validStatuses.includes(newStatus)) {
+            throw new Error(`Invalid status: ${newStatus}. Must be one of: ${validStatuses.join(', ')}`);
+        }
+
+        const [affectedCount] = await Equipment.update(
+            { status: newStatus },
+            {
+                where: {
+                    id: { [Op.in]: ids },
+                    is_active: true
+                }
+            }
+        );
+
+        return {
+            updatedCount: affectedCount,
+            status: newStatus
+        };
+    }
+
+    /**
+     * Batch soft-delete multiple equipment items
+     */
+    async batchDeleteEquipment(ids, userRole) {
+        if (userRole !== 'admin') {
+            throw new Error('Only administrators can perform batch delete operations');
+        }
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            throw new Error('Please select at least one equipment item to delete');
+        }
+
+        const [deletedCount] = await Equipment.update(
+            { is_active: false },
+            {
+                where: {
+                    id: { [Op.in]: ids },
+                    is_active: true
+                }
+            }
+        );
+
+        return {
+            deletedCount
         };
     }
 }

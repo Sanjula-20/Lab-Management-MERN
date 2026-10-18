@@ -1,7 +1,8 @@
-// src/pages/OrderManagement.jsx - Professional Order Management with Sidebar
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import SmartSearchBar from '../components/common/SmartSearchBar'
+import Pagination from '../components/common/Pagination'
 
 export default function OrderManagement() {
     // Order management specific state
@@ -11,7 +12,8 @@ export default function OrderManagement() {
     const [editingOrder, setEditingOrder] = useState(null)
     const [currentPage, setCurrentPage] = useState(1)
     const [ordersPerPage] = useState(10)
-    const [statusFilter, setStatusFilter] = useState('all')
+    const [selectedStatuses, setSelectedStatuses] = useState([])
+    const [selectedPriorities, setSelectedPriorities] = useState([])
     const [formData, setFormData] = useState({
         supplier: '',
         equipment_name: '',
@@ -203,6 +205,30 @@ export default function OrderManagement() {
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
 
+    // Search filter groups
+    const orderSearchGroups = useMemo(() => [
+        {
+            id: 'status',
+            label: 'Order Status',
+            options: [
+                { id: 'Pending', label: 'Pending', color: 'bg-yellow-100 text-yellow-800' },
+                { id: 'Approved', label: 'Approved', color: 'bg-blue-100 text-blue-800' },
+                { id: 'Ordered', label: 'Ordered', color: 'bg-indigo-100 text-indigo-800' },
+                { id: 'Delivered', label: 'Delivered', color: 'bg-green-100 text-green-800' },
+                { id: 'Cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-800' }
+            ]
+        },
+        {
+            id: 'priority',
+            label: 'Priority Level',
+            options: [
+                { id: 'Low', label: 'Low', color: 'bg-gray-100 text-gray-800' },
+                { id: 'Medium', label: 'Medium', color: 'bg-blue-100 text-blue-800' },
+                { id: 'High', label: 'High', color: 'bg-red-100 text-red-800' }
+            ]
+        }
+    ], [])
+
     // Escape key handler to go back to previous state
     useEffect(() => {
         const handleKeyDown = (event) => {
@@ -216,8 +242,9 @@ export default function OrderManagement() {
                     setShowNotifications(false)
                 } else if (searchQuery) {
                     setSearchQuery('')
-                } else if (statusFilter !== 'all') {
-                    setStatusFilter('all')
+                } else if (selectedStatuses.length > 0 || selectedPriorities.length > 0) {
+                    setSelectedStatuses([])
+                    setSelectedPriorities([])
                 } else {
                     navigate(-1)
                 }
@@ -226,7 +253,7 @@ export default function OrderManagement() {
 
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [showCreateModal, showUserMenu, showNotifications, searchQuery, statusFilter, navigate])
+    }, [showCreateModal, showUserMenu, showNotifications, searchQuery, selectedStatuses, selectedPriorities, navigate])
 
     // Check if user is admin and load data
     useEffect(() => {
@@ -246,7 +273,7 @@ export default function OrderManagement() {
     // Filter orders when search or filter changes
     useEffect(() => {
         filterOrders()
-    }, [searchQuery, statusFilter, orders])
+    }, [searchQuery, selectedStatuses, selectedPriorities, orders])
 
     // Calculate total amount when quantity or price changes
     useEffect(() => {
@@ -466,8 +493,12 @@ export default function OrderManagement() {
             )
         }
 
-        if (statusFilter !== 'all') {
-            filtered = filtered.filter(order => order.status === statusFilter)
+        if (selectedStatuses.length > 0) {
+            filtered = filtered.filter(order => selectedStatuses.includes(order.status))
+        }
+
+        if (selectedPriorities.length > 0) {
+            filtered = filtered.filter(order => selectedPriorities.includes(order.priority))
         }
 
         setFilteredOrders(filtered)
@@ -781,42 +812,42 @@ export default function OrderManagement() {
                     </div>
 
                     {/* Search and Filter Controls */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-                        <h3 className="text-lg font-medium text-gray-900 mb-4">Search & Filters</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Search Orders
-                                </label>
-                                <input
-                                    type="text"
-                                    placeholder="Search by supplier, equipment, or order ID..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-8 p-4 sm:p-5">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            <div className="flex-1 max-w-2xl">
+                                <SmartSearchBar
+                                    searchValue={searchQuery}
+                                    onSearchChange={(val) => setSearchQuery(val)}
+                                    placeholder="Search by supplier, equipment name, or order ID..."
+                                    groups={orderSearchGroups}
+                                    selectedOptions={{
+                                        status: selectedStatuses,
+                                        priority: selectedPriorities
+                                    }}
+                                    onOptionToggle={(groupId, optId) => {
+                                        if (groupId === 'status') {
+                                            setSelectedStatuses(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
+                                        } else if (groupId === 'priority') {
+                                            setSelectedPriorities(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
+                                        }
+                                    }}
+                                    onGroupSelectAll={(groupId, allIds) => {
+                                        if (groupId === 'status') setSelectedStatuses(allIds)
+                                        else if (groupId === 'priority') setSelectedPriorities(allIds)
+                                    }}
+                                    onGroupClear={(groupId) => {
+                                        if (groupId === 'status') setSelectedStatuses([])
+                                        else if (groupId === 'priority') setSelectedPriorities([])
+                                    }}
+                                    onClearAll={() => {
+                                        setSearchQuery('')
+                                        setSelectedStatuses([])
+                                        setSelectedPriorities([])
+                                    }}
                                 />
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Filter by Status
-                                </label>
-                                <select
-                                    value={statusFilter}
-                                    onChange={(e) => setStatusFilter(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                >
-                                    <option value="all">All Statuses</option>
-                                    <option value="Pending">Pending</option>
-                                    <option value="Approved">Approved</option>
-                                    <option value="Ordered">Ordered</option>
-                                    <option value="Delivered">Delivered</option>
-                                    <option value="Cancelled">Cancelled</option>
-                                </select>
-                            </div>
-                            <div className="flex items-end">
-                                <div className="text-sm text-gray-600">
-                                    Showing {filteredOrders.length} of {orders.length} orders
-                                </div>
+                            <div className="text-xs sm:text-sm font-semibold text-gray-600 bg-gray-50 border border-gray-200 px-4 py-2.5 rounded-xl self-start lg:self-center">
+                                Showing <span className="text-blue-600 font-bold">{filteredOrders.length}</span> of <span className="font-bold text-gray-900">{orders.length}</span> orders
                             </div>
                         </div>
                     </div>
@@ -1129,39 +1160,20 @@ export default function OrderManagement() {
                         </div>
 
                         {/* Pagination */}
-                        {totalPages > 1 && (
-                            <div className="bg-white px-4 py-3 border-t border-gray-200 sm:px-6">
-                                <div className="flex justify-between items-center">
-                                    <div className="text-sm text-gray-700">
-                                        Showing {indexOfFirstOrder + 1} to {Math.min(indexOfLastOrder, filteredOrders.length)} of {filteredOrders.length} orders
-                                    </div>
-                                    <div className="flex space-x-2">
-                                        <button
-                                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                            disabled={currentPage === 1}
-                                            className={`px-3 py-1 rounded-lg ${currentPage === 1
-                                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                                                }`}
-                                        >
-                                            Previous
-                                        </button>
-                                        <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg">
-                                            {currentPage} of {totalPages}
-                                        </span>
-                                        <button
-                                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                                            disabled={currentPage === totalPages}
-                                            className={`px-3 py-1 rounded-lg ${currentPage === totalPages
-                                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                                                }`}
-                                        >
-                                            Next
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+                        {filteredOrders.length > 0 && (
+                            <Pagination
+                                currentPage={currentPage}
+                                totalItems={filteredOrders.length}
+                                pageSize={ordersPerPage}
+                                onPageChange={setCurrentPage}
+                                onPageSizeChange={(newSize) => {
+                                    setOrdersPerPage(newSize)
+                                    setCurrentPage(1)
+                                }}
+                                pageSizeOptions={[10, 25, 50]}
+                                itemLabel="orders"
+                                scrollToTop={true}
+                            />
                         )}
                     </div>
                 </main>
