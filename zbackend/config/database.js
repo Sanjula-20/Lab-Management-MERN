@@ -52,13 +52,13 @@ const testConnection = async () => {
     try {
         console.log(`\n🔗 Testing database connection...`);
         console.log(`   Connecting to: ${sequelize.config.host}:${sequelize.config.port}\n`);
-        
+
         await sequelize.authenticate();
-        
+
         console.log('✅ SUCCESS! Database connection established.');
         console.log(`   Connected to: ${sequelize.config.database}`);
         console.log(`   Using host: ${sequelize.config.host}\n`);
-        
+
         return true;
     } catch (error) {
         console.error('\n❌ FAILED! Unable to connect to the database.');
