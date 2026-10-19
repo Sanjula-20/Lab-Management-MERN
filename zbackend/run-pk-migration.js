@@ -4,7 +4,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 async function run() {
     const { sequelize } = require('./config/database');
-    const migration = require('./migrations/finalize-primary-key');
+    const migration = require('./migrations/20260310000008_finalize_primary_key');
 
     console.log('\n🚀 FINALIZE PRIMARY KEY MIGRATION');
     console.log('═'.repeat(55));

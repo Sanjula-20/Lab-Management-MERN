@@ -10,6 +10,11 @@
     "scripts": {
         "start": "node server.js",
         "dev": "nodemon server.js",
+        "migrate": "node migrations-runner.js",
+        "migrate:status": "node migrations-runner.js --status",
+        "migrate:undo": "node migrations-runner.js --rollback",
+        "migrate:create": "node migrations-runner.js --create",
+        "migrate:adopt": "node migrations-runner.js --adopt",
         "sync-db": "node scripts/sync-db.js",
         "test-db": "node -e \"const {testConnection} = require('./config/database'); testConnection();\"",
         "create-sample": "curl -X POST http://localhost:5000/api/create-sample-data",
