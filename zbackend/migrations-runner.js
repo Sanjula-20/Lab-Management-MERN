@@ -86,6 +86,16 @@ async function verifyMigrationSchemaPresent(migrationName, queryInterface) {
     try {
         const tables = await queryInterface.showAllTables();
 
+        if (migrationName.includes('create_initial_baseline_tables')) {
+            const baselineTables = [
+                'users', 'labs', 'equipment', 'bookings', 'incidents',
+                'orders', 'maintenance_records', 'notifications',
+                'notification_settings', 'report_schedules', 'reports',
+                'training', 'training_certifications'
+            ];
+            return baselineTables.every(t => tables.includes(t));
+        }
+
         if (migrationName.includes('allow_null_password')) {
             if (!tables.includes('users')) return false;
             const cols = await queryInterface.describeTable('users');
@@ -217,6 +227,21 @@ async function verifyMigrationSchemaPresent(migrationName, queryInterface) {
                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'labs' AND COLUMN_NAME = 'in_charge_id' AND REFERENCED_TABLE_NAME = 'users'
             `);
             return fk.length > 0;
+        }
+
+        if (migrationName.includes('add_audit_and_extended_fields')) {
+            if (!tables.includes('audit_logs') || !tables.includes('dealers') || !tables.includes('equipment') || !tables.includes('labs')) return false;
+            const dealerCols = await queryInterface.describeTable('dealers');
+            const eqCols = await queryInterface.describeTable('equipment');
+            const labCols = await queryInterface.describeTable('labs');
+            return !!(dealerCols.state && dealerCols.postal_code && eqCols.indent_number && labCols.icon);
+        }
+
+        if (migrationName.includes('master_admin_permissions_hardware_options')) {
+            if (!tables.includes('hardware_options') || !tables.includes('labs') || !tables.includes('incidents')) return false;
+            const labCols = await queryInterface.describeTable('labs');
+            const incCols = await queryInterface.describeTable('incidents');
+            return !!(labCols.department_id && labCols.systems_available && incCols.lab_id);
         }
 
         return false;

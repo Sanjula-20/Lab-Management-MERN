@@ -19,11 +19,35 @@
 - Calendar & Training Management
 <!-- - Admin features: User stats, order stats (restricted) -->
 
+## Quick Start for Teammates & Collaboration
+
+### 1. Backend Setup & Database Migrations
+```bash
+cd zbackend
+npm install
+copy .env.example .env     # On Windows (or 'cp .env.example .env' on Linux/macOS)
+# Configure DB credentials in .env if different from root / no password
+
+# Run complete database setup (creates DB, runs all 17 migrations, seeds reference data):
+npm run db:setup
+
+# Start backend server (http://localhost:5000):
+npm run dev
+```
+*(For detailed migration documentation and troubleshooting, see [zbackend/README.md](file:///e:/Laboratory%20MS/Lab-Management-MERN/zbackend/README.md))*
+
+### 2. Frontend Setup
+```bash
+cd ../frontend
+npm install
+npm run dev
+```
+Open [http://localhost:5173](http://localhost:5173) in your browser.  
+Default Admin Login: `admin@labms.local` / `Admin@123`
+
+---
+
 ## Manual & Workflow
-1. **Setup:**
-   - Install dependencies: `npm install` in both `frontend` and `zbackend`
-   - Start backend: `npm start` in `zbackend`
-   - Start frontend: `npm run dev` in `frontend`
 2. **Register:**
    - New users register with email/OTP
    - Email verification required

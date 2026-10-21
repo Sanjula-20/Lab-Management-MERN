@@ -21,6 +21,9 @@ const RecentlyAccessed = require('./RecentlyAccessed');
 
 const Role = require('./Role').default ?? require('./Role');
 const Department = require('./Department').default ?? require('./Department');
+const AuditLog = require('./AuditLog');
+const RolePermission = require('./RolePermission');
+const HardwareOption = require('./HardwareOption');
 
 // ============= ASSOCIATIONS =============
 
@@ -316,9 +319,10 @@ Report.belongsTo(ReportSchedule, {
 
 // ============= RBAC ASSOCIATIONS =============
 User.belongsTo(Role,       { foreignKey: 'roleId',       as: 'role',       constraints: false });
-Role.hasMany(User,         { foreignKey: 'roleId',       as: 'role_users', constraints: false });
 User.belongsTo(Department, { foreignKey: 'departmentId', as: 'department', constraints: false });
 Department.hasMany(User,   { foreignKey: 'departmentId', as: 'users',      constraints: false });
+Department.belongsTo(User, { foreignKey: 'createdBy',    as: 'creator',    constraints: false });
+Department.belongsTo(User, { foreignKey: 'updatedBy',    as: 'updater',    constraints: false });
 
 // ============= EQUIPMENT CATEGORY ASSOCIATIONS =============
 EquipmentCategory.hasMany(Equipment, {
@@ -346,6 +350,52 @@ Equipment.belongsTo(Dealer, {
     constraints: false
 });
 
+// ============= ROLE PERMISSIONS ASSOCIATIONS =============
+Role.hasMany(RolePermission, {
+    foreignKey: 'roleId',
+    as: 'permissions'
+});
+RolePermission.belongsTo(Role, {
+    foreignKey: 'roleId',
+    as: 'role'
+});
+
+// ============= DEPARTMENT & LAB ASSOCIATIONS =============
+Department.hasMany(Lab, {
+    foreignKey: 'department_id',
+    as: 'labs',
+    constraints: false
+});
+Lab.belongsTo(Department, {
+    foreignKey: 'department_id',
+    as: 'departmentDetails',
+    constraints: false
+});
+
+// ============= LAB & INCIDENT ASSOCIATIONS =============
+Lab.hasMany(Incident, {
+    foreignKey: 'lab_id',
+    as: 'incidents',
+    constraints: false
+});
+Incident.belongsTo(Lab, {
+    foreignKey: 'lab_id',
+    as: 'lab',
+    constraints: false
+});
+
+// ============= BOOKING APPROVER ASSOCIATIONS =============
+Booking.belongsTo(User, {
+    foreignKey: 'approved_by',
+    as: 'approver',
+    constraints: false
+});
+Booking.belongsTo(User, {
+    foreignKey: 'cancelled_by',
+    as: 'canceller',
+    constraints: false
+});
+
 console.log('✅ Model associations defined successfully');
 
 // ============= EXPORT ALL MODELS =============
@@ -369,4 +419,7 @@ module.exports = {
     RecentlyAccessed,
     Role,
     Department,
+    AuditLog,
+    RolePermission,
+    HardwareOption
 };

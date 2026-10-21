@@ -208,7 +208,7 @@ class BookingService {
 
             // Check for conflicts
             const conflictWhere = {
-                status: { [Op.in]: ['pending', 'confirmed'] },
+                status: { [Op.in]: ['pending', 'confirmed', 'approved'] },
                 [Op.and]: [
                     { start_time: { [Op.lt]: finalEndTime } },
                     { end_time: { [Op.gt]: finalStartTime } }
@@ -294,48 +294,153 @@ class BookingService {
     }
 
     /**
-     * Delete booking
+     * Approve booking request (Admin/Master Admin only, cannot approve own booking)
      */
-    async deleteBooking(id, userId, userRole) {
+    async approveBooking(id, adminUserId, adminRole) {
         const booking = await Booking.findByPk(id);
 
         if (!booking) {
             throw new Error('Booking not found');
         }
 
-        // Check permissions
-        if (userRole === 'student' && booking.user_id !== userId) {
-            throw new Error('You do not have permission to delete this booking');
+        if (booking.status !== 'pending') {
+            throw new Error(`Cannot approve booking with status '${booking.status}'`);
         }
 
-        await booking.update({ status: 'cancelled' });
-        return { message: 'Booking cancelled successfully' };
+        if (booking.user_id === adminUserId) {
+            throw new Error('Users cannot approve their own booking requests');
+        }
+
+        await booking.update({
+            status: 'approved',
+            approved_by: adminUserId,
+            approval_time: new Date()
+        });
+
+        // Send notification to the user
+        try {
+            await createNotification({
+                user_id: booking.user_id,
+                type: 'booking',
+                title: 'Booking Approved',
+                message: `Your ${booking.booking_type} booking has been approved.`,
+                metadata: { booking_id: booking.id, status: 'approved' }
+            });
+        } catch (notifErr) {
+            console.error('Failed to notify user about booking approval:', notifErr.message);
+        }
+
+        return await this.getBookingById(id, adminUserId, adminRole);
+    }
+
+    /**
+     * Reject booking request (Admin/Master Admin only, reason required, cannot reject own)
+     */
+    async rejectBooking(id, adminUserId, adminRole, reason) {
+        const booking = await Booking.findByPk(id);
+
+        if (!booking) {
+            throw new Error('Booking not found');
+        }
+
+        if (booking.status !== 'pending') {
+            throw new Error(`Cannot reject booking with status '${booking.status}'`);
+        }
+
+        if (booking.user_id === adminUserId) {
+            throw new Error('Users cannot reject their own booking requests');
+        }
+
+        if (!reason || !reason.trim()) {
+            throw new Error('Rejection reason is required');
+        }
+
+        await booking.update({
+            status: 'rejected',
+            rejection_reason: reason.trim(),
+            approved_by: adminUserId,
+            approval_time: new Date()
+        });
+
+        // Send notification to the user
+        try {
+            await createNotification({
+                user_id: booking.user_id,
+                type: 'booking',
+                title: 'Booking Rejected',
+                message: `Your ${booking.booking_type} booking was rejected: ${reason.trim()}`,
+                metadata: { booking_id: booking.id, status: 'rejected', reason: reason.trim() }
+            });
+        } catch (notifErr) {
+            console.error('Failed to notify user about booking rejection:', notifErr.message);
+        }
+
+        return await this.getBookingById(id, adminUserId, adminRole);
+    }
+
+    /**
+     * Cancel booking (Faculty can cancel their own, Admins can cancel any)
+     */
+    async cancelBooking(id, userId, userRole) {
+        const booking = await Booking.findByPk(id);
+
+        if (!booking) {
+            throw new Error('Booking not found');
+        }
+
+        const isPrivileged = userRole === 'admin' || userRole === 'master_admin';
+        if (!isPrivileged && booking.user_id !== userId) {
+            throw new Error('You do not have permission to cancel this booking');
+        }
+
+        if (booking.status === 'cancelled' || booking.status === 'completed') {
+            throw new Error(`Cannot cancel a booking that is already ${booking.status}`);
+        }
+
+        await booking.update({
+            status: 'cancelled',
+            cancelled_by: userId,
+            cancellation_time: new Date()
+        });
+
+        return await this.getBookingById(id, userId, userRole);
+    }
+
+    /**
+     * Delete booking
+     */
+    async deleteBooking(id, userId, userRole) {
+        return await this.cancelBooking(id, userId, userRole);
     }
 
     /**
      * Get booking statistics
      */
     async getStats(userId, userRole) {
-        const whereClause = {}; // All users see total stats
+        const whereClause = {};
 
-        const [total, pending, confirmed, completed, cancelled] = await Promise.all([
+        const [total, pending, confirmed, approved, completed, cancelled, rejected] = await Promise.all([
             Booking.count({ where: whereClause }),
             Booking.count({ where: { ...whereClause, status: 'pending' } }),
             Booking.count({ where: { ...whereClause, status: 'confirmed' } }),
+            Booking.count({ where: { ...whereClause, status: 'approved' } }),
             Booking.count({ where: { ...whereClause, status: 'completed' } }),
-            Booking.count({ where: { ...whereClause, status: 'cancelled' } })
+            Booking.count({ where: { ...whereClause, status: 'cancelled' } }),
+            Booking.count({ where: { ...whereClause, status: 'rejected' } })
         ]);
 
-        // Active bookings = pending + confirmed (not completed or cancelled)
-        const active = pending + confirmed;
+        const approvedTotal = confirmed + approved;
+        const active = pending + approvedTotal;
 
         return {
             total,
             active,
             pending,
-            confirmed,
+            confirmed: approvedTotal,
+            approved: approvedTotal,
             completed,
-            cancelled
+            cancelled,
+            rejected
         };
     }
 
@@ -345,7 +450,7 @@ class BookingService {
     async getUpcomingBookings(userId, userRole, limit = 10) {
         const whereClause = {
             start_time: { [Op.gte]: new Date() },
-            status: { [Op.in]: ['pending', 'confirmed'] }
+            status: { [Op.in]: ['pending', 'confirmed', 'approved'] }
         };
 
         if (userRole === 'student') {

@@ -8,6 +8,9 @@
 # Session storage
 .sessions.json
 
+# Local SQL dumps and backups
+*.sql
+
 # Dependencies
 node_modules/
 

@@ -3,7 +3,7 @@ const { User } = require('../models');
 const { getSession } = require('../utils/sessionManager');
 
 // Role mapping for backward compatibility
-const ROLE_MAP = { 1: 'student', 2: 'faculty', 3: 'teacher', 4: 'lab_assistant', 5: 'lab_technician', 6: 'admin' };
+const ROLE_MAP = { 1: 'student', 2: 'faculty', 3: 'teacher', 4: 'lab_assistant', 5: 'lab_technician', 6: 'admin', 7: 'master_admin' };
 
 // Session-based authentication middleware
 const authenticateToken = async (req, res, next) => {
@@ -11,18 +11,27 @@ const authenticateToken = async (req, res, next) => {
         console.log('🔐 Authentication middleware triggered');
         console.log('Cookies:', req.cookies ? 'Cookies present' : 'No cookies');
 
-        // Get session ID from cookie
-        const sessionId = req.cookies?.sessionId;
+        // Get session ID from cookie, Authorization header, or x-session-id header
+        let sessionId = req.cookies?.sessionId;
+        if (!sessionId && req.headers.authorization) {
+            const parts = req.headers.authorization.split(' ');
+            if (parts.length === 2 && (parts[0] === 'Bearer' || parts[0] === 'Session')) {
+                sessionId = parts[1];
+            }
+        }
+        if (!sessionId && req.headers['x-session-id']) {
+            sessionId = req.headers['x-session-id'];
+        }
 
         if (!sessionId || sessionId === 'null' || sessionId === 'undefined') {
-            console.log('❌ No session ID in cookies');
+            console.log('❌ No session ID in cookies or headers');
             return res.status(401).json({
                 success: false,
                 message: 'Access denied. No session provided.'
             });
         }
 
-        console.log('🎫 Session ID extracted from cookie');
+        console.log('🎫 Session ID extracted');
 
         // Get session data
         const session = getSession(sessionId);
@@ -65,7 +74,7 @@ const authenticateToken = async (req, res, next) => {
             userName: user.userName,
             userMail: user.userMail,
             roleId: user.roleId,
-            role: ROLE_MAP[user.roleId], // Derived from roleId
+            role: ROLE_MAP[user.roleId] || 'student', // Derived from roleId
             departmentId: user.departmentId,
             companyId: user.companyId,
             userNumber: user.userNumber,
@@ -101,7 +110,7 @@ const authenticateToken = async (req, res, next) => {
     }
 };
 
-// ✅ IMPROVED: Generic role middleware
+// Generic role middleware (Master Admin has super-privileges)
 const requireRole = (allowedRoles) => {
     return (req, res, next) => {
         if (!req.user) {
@@ -112,7 +121,12 @@ const requireRole = (allowedRoles) => {
             });
         }
 
-        const userRole = req.user.role; // Already derived from roleId via ROLE_MAP
+        // Master Admin always has access to all standard role-protected features
+        if (req.user.role === 'master_admin' || req.user.roleId === 7) {
+            return next();
+        }
+
+        const userRole = req.user.role;
         const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
 
         // Normalize role values (handle spaces and underscores)
@@ -120,7 +134,8 @@ const requireRole = (allowedRoles) => {
         const normalizedRoles = roles.map(r => r.toLowerCase().replace(/ /g, '_'));
 
         // Check if user's role matches any of the allowed roles
-        const hasAccess = normalizedRoles.includes(normalizedUserRole);
+        const hasAccess = normalizedRoles.includes(normalizedUserRole) ||
+            (normalizedRoles.includes('admin') && (normalizedUserRole === 'master_admin' || req.user.roleId === 7));
 
         if (!hasAccess) {
             console.log('❌ Role access denied. User role:', userRole, 'Required:', roles);
@@ -135,6 +150,96 @@ const requireRole = (allowedRoles) => {
     };
 };
 
+// Master Admin exclusive middleware
+const requireMasterAdmin = (req, res, next) => {
+    if (!req.user) {
+        return res.status(401).json({
+            success: false,
+            message: 'Access denied. Authentication required.'
+        });
+    }
+
+    if (req.user.role === 'master_admin' || req.user.roleId === 7) {
+        return next();
+    }
+
+    return res.status(403).json({
+        success: false,
+        message: 'Access denied. Master Admin privileges required.'
+    });
+};
+
+// Database-backed permission checker for fine-grained authorization
+const checkPermission = (pageKey, action = 'view') => {
+    return async (req, res, next) => {
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Access denied. Authentication required.'
+            });
+        }
+
+        // Master Admin has full access to everything
+        if (req.user.role === 'master_admin' || req.user.roleId === 7) {
+            return next();
+        }
+
+        // Protection for access control
+        if (pageKey === 'access_control') {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. Only Master Admin can manage access permissions.'
+            });
+        }
+
+        try {
+            const { RolePermission } = require('../models');
+            const perm = await RolePermission.findOne({
+                where: {
+                    roleId: req.user.roleId,
+                    page_key: pageKey
+                }
+            });
+
+            if (!perm) {
+                // If admin, grant fallback access for operational pages
+                if (req.user.role === 'admin' || req.user.roleId === 6) {
+                    return next();
+                }
+                return res.status(403).json({
+                    success: false,
+                    message: `Access denied: No permissions configured for ${pageKey}`
+                });
+            }
+
+            const fieldMap = {
+                view: 'can_view',
+                create: 'can_create',
+                edit: 'can_edit',
+                delete: 'can_delete',
+                approve: 'can_approve',
+                export: 'can_export'
+            };
+
+            const reqField = fieldMap[action] || 'can_view';
+            if (!perm[reqField]) {
+                return res.status(403).json({
+                    success: false,
+                    message: `Access denied: You do not have permission to ${action} on ${pageKey}`
+                });
+            }
+
+            next();
+        } catch (err) {
+            console.error('Permission check error:', err);
+            return res.status(500).json({
+                success: false,
+                message: 'Authorization check failed'
+            });
+        }
+    };
+};
+
 // Admin role middleware
 const requireAdmin = (req, res, next) => {
     return requireRole('admin')(req, res, next);
@@ -145,12 +250,12 @@ const requireTeacherOrAdmin = (req, res, next) => {
     return requireRole(['teacher', 'admin'])(req, res, next);
 };
 
-// ✅ ADDED: Lab Assistant or Admin role middleware
+// Lab Assistant or Admin role middleware
 const requireLabAssistantOrAdmin = (req, res, next) => {
     return requireRole(['lab_assistant', 'admin'])(req, res, next);
 };
 
-// ✅ ADDED: Lab Technician or Admin role middleware
+// Lab Technician or Admin role middleware
 const requireLabTechnicianOrAdmin = (req, res, next) => {
     return requireRole(['lab_technician', 'admin'])(req, res, next);
 };
@@ -203,11 +308,13 @@ const optionalAuth = async (req, res, next) => {
 
 module.exports = {
     authenticateToken,
-    requireRole, // ✅ ADDED: Export the generic role middleware
+    requireRole,
     requireAdmin,
+    requireMasterAdmin,
+    checkPermission,
     requireTeacherOrAdmin,
-    requireLabAssistantOrAdmin, // ✅ ADDED
-    requireLabTechnicianOrAdmin, // ✅ ADDED
+    requireLabAssistantOrAdmin,
+    requireLabTechnicianOrAdmin,
     requireAuthenticated,
     optionalAuth
 };

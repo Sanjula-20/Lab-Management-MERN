@@ -105,8 +105,9 @@ router.get('/:id', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
         console.log('👤 Creating new user by admin:', req.user.email);
+        const actorId = req.user.userId || req.user.id;
         
-        const user = await userService.createUser(req.body);
+        const user = await userService.createUser(req.body, actorId);
         console.log('✅ User created successfully:', user.email);
         
         res.status(201).json({
@@ -117,8 +118,8 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     } catch (error) {
         console.error('💥 Error creating user:', error);
         
-        if (error.message === 'Email already exists') {
-            return res.status(409).json({
+        if (error.message.includes('already') || error.message.includes('Missing')) {
+            return res.status(400).json({
                 success: false,
                 message: error.message
             });
@@ -146,8 +147,9 @@ router.put('/:id', authenticateToken, async (req, res) => {
         }
         
         console.log('👤 Updating user:', userId, 'by:', req.user.email);
+        const actorId = req.user.userId || req.user.id;
         
-        const user = await userService.updateUser(userId, req.body);
+        const user = await userService.updateUser(userId, req.body, actorId);
         console.log('✅ User updated successfully');
         
         res.json({
@@ -165,8 +167,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
             });
         }
         
-        if (error.message === 'Email already in use') {
-            return res.status(409).json({
+        if (error.message.includes('already in use') || error.message.includes('already assigned')) {
+            return res.status(400).json({
                 success: false,
                 message: error.message
             });
@@ -185,9 +187,10 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
         console.log('🗑️ DELETE REQUEST - User ID:', userId, 'Requested by:', req.user.email, '(Role:', req.user.role + ')');
+        const actorId = req.user.userId || req.user.id;
         
-        const result = await userService.deleteUser(userId);
-        console.log('✅ User PERMANENTLY deleted from database:', userId);
+        const result = await userService.deleteUser(userId, actorId);
+        console.log('✅ User deleted successfully:', userId);
         
         res.json({
             success: true,
@@ -196,7 +199,6 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('💥 DELETE ERROR:', error.message);
-        console.error('💥 Full error:', error);
         
         if (error.message === 'User not found') {
             return res.status(404).json({
@@ -205,10 +207,9 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
             });
         }
         
-        // Return the actual error message from the service
         res.status(400).json({
             success: false,
-            message: error.message, // This will contain the detailed "Cannot delete user..." message
+            message: error.message,
             error: error.message
         });
     }
@@ -218,8 +219,9 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
 router.put('/:id/activate', authenticateToken, requireAdmin, async (req, res) => {
     try {
         console.log('✅ Activating user:', req.params.id, 'by admin:', req.user.email);
+        const actorId = req.user.userId || req.user.id;
         
-        const user = await userService.activateUser(req.params.id);
+        const user = await userService.activateUser(req.params.id, actorId);
         console.log('✅ User activated successfully');
         
         res.json({
@@ -240,6 +242,38 @@ router.put('/:id/activate', authenticateToken, requireAdmin, async (req, res) =>
         res.status(500).json({
             success: false,
             message: 'Failed to activate user',
+            error: error.message
+        });
+    }
+});
+
+// PUT deactivate user - Only Admins can deactivate users
+router.put('/:id/deactivate', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        console.log('🔒 Deactivating user:', req.params.id, 'by admin:', req.user.email);
+        const actorId = req.user.userId || req.user.id;
+        
+        const user = await userService.deactivateUser(req.params.id, actorId);
+        console.log('🔒 User deactivated successfully');
+        
+        res.json({
+            success: true,
+            message: 'User deactivated successfully',
+            data: user
+        });
+    } catch (error) {
+        console.error('💥 Error deactivating user:', error);
+        
+        if (error.message === 'User not found') {
+            return res.status(404).json({
+                success: false,
+                message: error.message
+            });
+        }
+        
+        res.status(500).json({
+            success: false,
+            message: 'Failed to deactivate user',
             error: error.message
         });
     }

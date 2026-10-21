@@ -12,7 +12,7 @@ const Booking = sequelize.define('Booking', {
         allowNull: false,
         references: {
             model: 'users',
-            key: 'id'
+            key: 'userId'
         },
         onUpdate: 'CASCADE',
         onDelete: 'RESTRICT'
@@ -53,12 +53,40 @@ const Booking = sequelize.define('Booking', {
         comment: 'Full datetime for booking end'
     },
     status: {
-        type: DataTypes.ENUM('pending', 'confirmed', 'cancelled', 'completed'),
+        type: DataTypes.STRING(50),
         allowNull: false,
         defaultValue: 'pending'
     },
     purpose: {
         type: DataTypes.TEXT,
+        allowNull: true
+    },
+    approved_by: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: 'users',
+            key: 'userId'
+        }
+    },
+    approval_time: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
+    rejection_reason: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    cancelled_by: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: 'users',
+            key: 'userId'
+        }
+    },
+    cancellation_time: {
+        type: DataTypes.DATE,
         allowNull: true
     }
 }, {

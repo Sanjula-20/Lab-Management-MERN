@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, checkPermission } = require('../middleware/auth');
 const equipmentCategoryService = require('../services/equipmentCategoryService');
 
 // GET category statistics
@@ -64,7 +64,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST create new equipment category
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, checkPermission('equipment_categories', 'create'), async (req, res) => {
     try {
         const category = await equipmentCategoryService.createCategory(req.body, req.user?.userId);
         res.status(201).json({
@@ -95,7 +95,7 @@ router.post('/', authenticateToken, async (req, res) => {
 });
 
 // PUT update equipment category by ID
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, checkPermission('equipment_categories', 'edit'), async (req, res) => {
     try {
         const category = await equipmentCategoryService.updateCategory(
             req.params.id,
@@ -136,7 +136,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
 });
 
 // DELETE equipment category by ID
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, checkPermission('equipment_categories', 'delete'), async (req, res) => {
     try {
         const force = req.query.force === 'true';
         const result = await equipmentCategoryService.deleteCategory(req.params.id, force);
@@ -168,7 +168,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 });
 
 // POST batch set status for multiple categories
-router.post('/batch-status', authenticateToken, async (req, res) => {
+router.post('/batch-status', authenticateToken, checkPermission('equipment_categories', 'edit'), async (req, res) => {
     try {
         const { ids, is_active } = req.body;
         const result = await equipmentCategoryService.batchSetStatus(ids, is_active);
@@ -188,7 +188,7 @@ router.post('/batch-status', authenticateToken, async (req, res) => {
 });
 
 // POST batch delete categories
-router.post('/batch-delete', authenticateToken, async (req, res) => {
+router.post('/batch-delete', authenticateToken, checkPermission('equipment_categories', 'delete'), async (req, res) => {
     try {
         const { ids, force } = req.body;
         const result = await equipmentCategoryService.batchDeleteCategories(ids, force);

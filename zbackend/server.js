@@ -78,8 +78,10 @@ const routes = [
     { name: 'Users', path: '/api/users', file: './routes/users' },
     { name: 'Roles', path: '/api/roles', file: './routes/roles' },
     { name: 'Departments', path: '/api/departments', file: './routes/departments' },
+    { name: 'Faculty', path: '/api/faculty', file: './routes/faculty' },
     { name: 'Equipment', path: '/api/equipment', file: './routes/equipment' },
     { name: 'Equipment Categories', path: '/api/equipment-categories', file: './routes/equipmentCategories' },
+    { name: 'Hardware Options', path: '/api/hardware-options', file: './routes/hardwareOptions' },
     { name: 'Dealers', path: '/api/dealers', file: './routes/dealers' },
     { name: 'Labs', path: '/api/labs', file: './routes/labs' },
     { name: 'Bookings', path: '/api/bookings', file: './routes/bookings' },
@@ -89,6 +91,7 @@ const routes = [
     { name: 'Notifications', path: '/api/notifications', file: './routes/notification' },
     { name: 'Orders', path: '/api/orders', file: './routes/orders' },
     { name: 'Incidents', path: '/api/incidents', file: './routes/incidents' },
+    { name: 'Audit', path: '/api/audit', file: './routes/audit' },
     { name: 'Training', path: '/api/training', file: './routes/training' },
     { name: 'Activities', path: '/api/activities', file: './routes/activities' },
     { name: 'System', path: '/api/system', file: './routes/system' }

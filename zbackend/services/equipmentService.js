@@ -1,7 +1,8 @@
 // Equipment Service - Business Logic Layer
-const { Equipment, Lab, User, Booking, Dealer } = require('../models');
+const { Equipment, Lab, User, Booking, Dealer, Incident } = require('../models');
 const { Op } = require('sequelize');
 const { createNotification } = require('../utils/notificationService');
+const auditService = require('./auditService');
 
 class EquipmentService {
     /**
@@ -94,6 +95,9 @@ class EquipmentService {
             category,
             brand,
             condition_status,
+            dealer_id,
+            generation,
+            department,
             search,
             page = 1,
             limit = 1000
@@ -137,6 +141,32 @@ class EquipmentService {
             whereClause.condition_status = conditions.length === 1 ? conditions[0] : { [Op.in]: conditions };
         }
 
+        const dealerIds = parseMultiFilter(dealer_id);
+        if (dealerIds && dealerIds.length > 0) {
+            whereClause.dealer_id = dealerIds.length === 1 ? dealerIds[0] : { [Op.in]: dealerIds };
+        }
+
+        const generations = parseMultiFilter(generation);
+        if (generations && generations.length > 0) {
+            whereClause.generation = generations.length === 1 ? generations[0] : { [Op.in]: generations };
+        }
+
+        // Lab include with optional department filter
+        const labInclude = {
+            model: Lab,
+            as: 'lab',
+            attributes: ['id', 'name', 'location', 'lab_type'],
+            required: false
+        };
+
+        const depts = parseMultiFilter(department);
+        if (depts && depts.length > 0) {
+            labInclude.where = {
+                lab_type: depts.length === 1 ? depts[0].toLowerCase() : { [Op.in]: depts.map(d => d.toLowerCase()) }
+            };
+            labInclude.required = true;
+        }
+
         if (search) {
             whereClause[Op.or] = [
                 { name: { [Op.like]: `%${search}%` } },
@@ -145,7 +175,11 @@ class EquipmentService {
                 { dealer_name: { [Op.like]: `%${search}%` } },
                 { serial_number: { [Op.like]: `%${search}%` } },
                 { description: { [Op.like]: `%${search}%` } },
-                { manufacturer: { [Op.like]: `%${search}%` } }
+                { manufacturer: { [Op.like]: `%${search}%` } },
+                { stock_register_page: { [Op.like]: `%${search}%` } },
+                { indent_number: { [Op.like]: `%${search}%` } },
+                { processor: { [Op.like]: `%${search}%` } },
+                { gpu: { [Op.like]: `%${search}%` } }
             ];
         }
 
@@ -154,12 +188,7 @@ class EquipmentService {
         const equipment = await Equipment.findAndCountAll({
             where: whereClause,
             include: [
-                {
-                    model: Lab,
-                    as: 'lab',
-                    attributes: ['id', 'name', 'location', 'lab_type'],
-                    required: false
-                },
+                labInclude,
                 {
                     model: User,
                     as: 'creator',
@@ -287,6 +316,12 @@ class EquipmentService {
             graphics_card: gpuVal,
             processor: equipmentData.processor?.trim() || null,
             operating_system: equipmentData.operating_system?.trim() || null,
+            // Extended hardware specs & tracking
+            ram_type: equipmentData.ram_type?.trim() || null,
+            gpu_memory: equipmentData.gpu_memory?.trim() || null,
+            indent_number: equipmentData.indent_number?.trim() || null,
+            indent_date: equipmentData.indent_date || null,
+            stock_register_page: equipmentData.stock_register_page ? String(equipmentData.stock_register_page).trim() : null,
             resolution: equipmentData.resolution || null,
             brightness: equipmentData.brightness || null,
             contrast_ratio: equipmentData.contrast_ratio || null,
@@ -347,6 +382,32 @@ class EquipmentService {
             console.error('⚠️ Failed to create equipment notification:', notifError.message);
         }
 
+        // Log audit event
+        try {
+            await auditService.logEvent({
+                entity_type: 'equipment',
+                entity_id: equipment.id,
+                action: 'create',
+                previous_values: null,
+                new_values: {
+                    name: dataToCreate.name,
+                    serial_number: dataToCreate.serial_number,
+                    category: dataToCreate.category,
+                    model: dataToCreate.model,
+                    brand: dataToCreate.brand,
+                    lab_id: dataToCreate.lab_id,
+                    dealer_id: dataToCreate.dealer_id,
+                    status: dataToCreate.status,
+                    indent_number: dataToCreate.indent_number,
+                    stock_register_page: dataToCreate.stock_register_page
+                },
+                user_id: userId,
+                user_name: equipmentWithAssociations?.creator?.name || 'Staff'
+            });
+        } catch (auditErr) {
+            console.error('⚠️ Failed to log equipment create audit event:', auditErr.message);
+        }
+
         return equipmentWithAssociations;
     }
 
@@ -360,8 +421,9 @@ class EquipmentService {
             throw new Error('Equipment not found');
         }
 
-        // Check permissions
-        if (userRole !== 'admin' && equipment.created_by !== userId) {
+        // Check permissions (admin and master_admin have elevated privileges)
+        const isElevated = userRole === 'admin' || userRole === 'master_admin';
+        if (!isElevated && equipment.created_by !== userId) {
             throw new Error('You do not have permission to edit this equipment');
         }
 
@@ -385,6 +447,11 @@ class EquipmentService {
             dataToUpdate.graphics_card = g;
         }
 
+        if (dataToUpdate.dealer_id && !dataToUpdate.dealer_name) {
+            const dealerObj = await Dealer.findByPk(dataToUpdate.dealer_id);
+            if (dealerObj) dataToUpdate.dealer_name = dealerObj.name;
+        }
+
         if (dataToUpdate.purchase_price !== undefined) {
             dataToUpdate.purchase_price = dataToUpdate.purchase_price ? parseFloat(dataToUpdate.purchase_price) : 0.00;
         }
@@ -393,8 +460,37 @@ class EquipmentService {
             dataToUpdate.current_value = dataToUpdate.current_value ? parseFloat(dataToUpdate.current_value) : 0.00;
         }
 
+        const oldValues = {
+            name: equipment.name,
+            status: equipment.status,
+            lab_id: equipment.lab_id,
+            dealer_id: equipment.dealer_id,
+            condition_status: equipment.condition_status
+        };
+
         const oldStatus = equipment.status;
         await equipment.update(dataToUpdate);
+
+        // Log audit event
+        try {
+            await auditService.logEvent({
+                entity_type: 'equipment',
+                entity_id: equipment.id,
+                action: 'update',
+                previous_values: oldValues,
+                new_values: {
+                    name: equipment.name,
+                    status: equipment.status,
+                    lab_id: equipment.lab_id,
+                    dealer_id: equipment.dealer_id,
+                    condition_status: equipment.condition_status
+                },
+                user_id: userId,
+                user_name: 'Staff/Admin'
+            });
+        } catch (auditErr) {
+            console.error('⚠️ Failed to log equipment update audit event:', auditErr.message);
+        }
 
         // Create notification if status changed
         if (dataToUpdate.status && dataToUpdate.status !== oldStatus) {
@@ -424,6 +520,12 @@ class EquipmentService {
                     as: 'lab',
                     attributes: ['id', 'name', 'location', 'lab_type'],
                     required: false
+                },
+                {
+                    model: Dealer,
+                    as: 'dealer',
+                    attributes: ['id', 'name', 'contact_person', 'email', 'phone', 'city'],
+                    required: false
                 }
             ]
         });
@@ -441,11 +543,50 @@ class EquipmentService {
             throw new Error('Equipment not found');
         }
 
-        if (userRole !== 'admin' && equipment.created_by !== userId) {
+        const isElevated = userRole === 'admin' || userRole === 'master_admin';
+        if (!isElevated && equipment.created_by !== userId) {
             throw new Error('You do not have permission to delete this equipment');
         }
 
+        // Check for active or pending bookings
+        const activeBookings = await Booking.count({
+            where: {
+                equipment_id: id,
+                status: { [Op.in]: ['confirmed', 'in_use', 'pending'] }
+            }
+        });
+        if (activeBookings > 0) {
+            throw new Error(`Cannot delete equipment: There are ${activeBookings} active or pending booking(s) associated with it.`);
+        }
+
+        // Check for open incidents
+        const activeIncidents = await Incident.count({
+            where: {
+                equipment_id: id,
+                status: { [Op.in]: ['open', 'investigating', 'pending_parts', 'in_progress', 'assigned'] }
+            }
+        });
+        if (activeIncidents > 0) {
+            throw new Error(`Cannot delete equipment: There are ${activeIncidents} open or unresolved incident(s) for this equipment.`);
+        }
+
         await equipment.update({ is_active: false });
+
+        // Audit log
+        try {
+            await auditService.logEvent({
+                entity_type: 'equipment',
+                entity_id: equipment.id,
+                action: 'delete',
+                previous_values: { name: equipment.name, serial_number: equipment.serial_number, status: equipment.status },
+                new_values: { is_active: false },
+                user_id: userId,
+                user_name: 'Staff/Admin'
+            });
+        } catch (auditErr) {
+            console.error('⚠️ Failed to log equipment delete audit event:', auditErr.message);
+        }
+
         return { message: 'Equipment deleted successfully' };
     }
 
@@ -481,7 +622,7 @@ class EquipmentService {
         if (!Array.isArray(ids) || ids.length === 0) {
             throw new Error('Equipment IDs are required');
         }
-        if (userRole !== 'admin') {
+        if (userRole !== 'admin' && userRole !== 'master_admin') {
             throw new Error('Only administrators can perform batch deletion');
         }
 
@@ -647,8 +788,8 @@ class EquipmentService {
      * Bulk delete equipment by lab
      */
     async bulkDeleteByLab(labId, userRole) {
-        // Check if user is admin
-        if (userRole !== 'admin') {
+        // Check if user is admin or master_admin
+        if (userRole !== 'admin' && userRole !== 'master_admin') {
             throw new Error('Only administrators can perform bulk delete operations');
         }
 
@@ -720,7 +861,7 @@ class EquipmentService {
      * Batch soft-delete multiple equipment items
      */
     async batchDeleteEquipment(ids, userRole) {
-        if (userRole !== 'admin') {
+        if (userRole !== 'admin' && userRole !== 'master_admin') {
             throw new Error('Only administrators can perform batch delete operations');
         }
 

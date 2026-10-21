@@ -40,8 +40,20 @@ const Dealer = sequelize.define('Dealer', {
         type: DataTypes.STRING(100),
         allowNull: true
     },
+    state: {
+        type: DataTypes.STRING(100),
+        allowNull: true
+    },
+    postal_code: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+    },
     gst_number: {
         type: DataTypes.STRING(50),
+        allowNull: true
+    },
+    notes: {
+        type: DataTypes.TEXT,
         allowNull: true
     },
     is_active: {

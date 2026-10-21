@@ -1,4 +1,5 @@
 // src/pages/Calendar.jsx
+import { Sidebar, AppHeader } from '../components/common/Navigation'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
@@ -25,6 +26,7 @@ export default function Calendar() {
     const [showUserMenu, setShowUserMenu] = useState(false)
     const [showNotifications, setShowNotifications] = useState(false)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    const [mobileOpen, setMobileOpen] = useState(false)
     const [currentTime, setCurrentTime] = useState(new Date())
 
     const { user, isAuthenticated, logout } = useAuth()
@@ -288,7 +290,10 @@ export default function Calendar() {
 
     const fetchBookings = async () => {
         try {
-            const response = await fetch(`${API_BASE_URL}/bookings`, {
+            const year = currentDate ? currentDate.getFullYear() : new Date().getFullYear();
+            const startYear = `${year - 1}-01-01`;
+            const endYear = `${year + 1}-12-31`;
+            const response = await fetch(`${API_BASE_URL}/bookings?start_date=${startYear}&end_date=${endYear}&limit=1000`, {
                 credentials: 'include',
                 headers: {
                     'Content-Type': 'application/json'
@@ -480,7 +485,8 @@ export default function Calendar() {
 
     const getStatusColor = (status) => {
         switch (status?.toLowerCase()) {
-            case 'confirmed': return 'bg-green-500'
+            case 'confirmed':
+            case 'approved': return 'bg-green-500'
             case 'pending': return 'bg-yellow-500'
             case 'cancelled': return 'bg-red-500'
             case 'completed': return 'bg-blue-500'
@@ -491,7 +497,8 @@ export default function Calendar() {
 
     const getStatusTextColor = (status) => {
         switch (status?.toLowerCase()) {
-            case 'confirmed': return 'text-green-800 bg-green-100'
+            case 'confirmed':
+            case 'approved': return 'text-green-800 bg-green-100'
             case 'pending': return 'text-yellow-800 bg-yellow-100'
             case 'cancelled': return 'text-red-800 bg-red-100'
             case 'completed': return 'text-blue-800 bg-blue-100'
@@ -523,24 +530,26 @@ export default function Calendar() {
         setShowModal(true)
     }
 
-    const updateBookingStatus = async (bookingId, newStatus) => {
+    const updateBookingStatus = async (bookingId, newStatus, reason = '') => {
         try {
+            const payload = { status: newStatus }
+            if (reason) payload.reason = reason
             const response = await fetch(`${API_BASE_URL}/bookings/${bookingId}/status`, {
                 method: 'PATCH',
                 credentials: 'include',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ status: newStatus })
+                body: JSON.stringify(payload)
             })
 
-            if (response.ok) {
+            const result = await response.json()
+            if (response.ok && result.success !== false) {
                 await fetchBookings()
                 setShowModal(false)
                 showSuccessMessage(`Booking ${newStatus.toLowerCase()} successfully!`)
             } else {
-                const errorData = await response.json()
-                setError(errorData.message || 'Failed to update booking status')
+                setError(result.message || 'Failed to update booking status')
             }
         } catch (error) {
             console.error('Error updating booking:', error)
@@ -787,204 +796,25 @@ export default function Calendar() {
 
     return (
         <div className="min-h-screen w-full bg-gray-50 flex">
-            {/* Sidebar */}
-            <div className={`fixed inset-y-0 left-0 z-50 ${sidebarCollapsed ? 'w-16' : 'w-64'} bg-white shadow-lg border-r border-gray-200 transition-all duration-300`}>
-                {/* Sidebar Header */}
-                <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-purple-600">
-                    {!sidebarCollapsed && (
-                        <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-white rounded-lg overflow-hidden p-1">
-                                <img 
-                                    src="/nec-logo.png" 
-                                    alt="NEC Logo" 
-                                    className="w-full h-full object-contain"
-                                />
-                            </div>
-                            <h1 className="text-xl font-bold text-white">
-                                NEC LabMS
-                            </h1>
-                        </div>
-                    )}
-                    <button
-                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        className="p-2 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors text-white"
-                    >
-                        <svg className={`w-5 h-5 transition-transform ${sidebarCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path>
-                        </svg>
-                    </button>
-                </div>
-
-                {/* Navigation Items */}
-                <nav className="mt-6 px-3">
-                    <div className="space-y-1">
-                        {navigationItems.filter(item => item.show).map((item) => {
-                            const isActive = location.pathname === item.path
-                            return (
-                                <button
-                                    key={item.id}
-                                    onClick={() => handleNavigation(item.path)}
-                                    className={`w-full flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
-                                        isActive
-                                            ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
-                                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                                    }`}
-                                    title={sidebarCollapsed ? item.title : ''}
-                                >
-                                    <div className="flex items-center justify-center w-5 h-5">
-                                        {item.icon}
-                                    </div>
-                                    {!sidebarCollapsed && (
-                                        <>
-                                            <span className="ml-3 flex-1 text-left">{item.title}</span>
-                                            {item.badge && (
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                                    isActive ? 'bg-white/20 text-white' : (item.badgeColor || 'bg-blue-100 text-blue-800')
-                                                }`}>
-                                                    {item.badge}
-                                                </span>
-                                            )}
-                                        </>
-                                    )}
-                                    {sidebarCollapsed && item.badge && (
-                                        <span className={`absolute left-8 top-2 w-2 h-2 rounded-full ${
-                                            item.badgeColor || 'bg-blue-500'
-                                        }`}></span>
-                                    )}
-                                </button>
-                            )
-                        })}
-                    </div>
-                </nav>
-
-                {/* Sidebar Footer */}
-                {!sidebarCollapsed && (
-                    <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                                <span className="text-white font-medium text-sm">
-                                    {(user?.name || user?.email)?.charAt(0)?.toUpperCase()}
-                                </span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">
-                                    {user?.name || user?.email}
-                                </p>
-                                <p className="text-xs text-gray-500 capitalize">
-                                    {user?.role}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
+            {/* Shared Sidebar Component */}
+            <Sidebar 
+                sidebarCollapsed={sidebarCollapsed}
+                setSidebarCollapsed={setSidebarCollapsed}
+                currentPath="/calendar"
+                mobileOpen={mobileOpen}
+                setMobileOpen={setMobileOpen}
+            />
 
             {/* Main Content */}
-            <div className={`flex-1 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
-                {/* Top Header */}
-                <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
-                    <div className="px-6 py-4">
-                        <div className="flex items-center justify-between">
-                            {/* Search Bar */}
-                            <form onSubmit={handleSearch} className="flex-1 max-w-lg">
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        placeholder="Search bookings..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-2 bg-gray-100 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
-                                    />
-                                    <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                                    </svg>
-                                </div>
-                            </form>
-
-                            {/* Header Right Section */}
-                            <div className="flex items-center space-x-4">
-                                {/* Current Time */}
-                                <div className="hidden md:block text-sm text-gray-600">
-                                    {currentTime.toLocaleTimeString('en-US', {
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                        hour12: true
-                                    })}
-                                </div>
-
-                                {/* New Booking Button - hidden for students */}
-                                {user?.role !== 'student' && (
-                                <button
-                                    onClick={() => handleNavigation('/bookings')}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-                                >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
-                                    </svg>
-                                    <span>New Booking</span>
-                                </button>
-                                )}
-
-                                {/* Notifications */}
-                                <button
-                                    onClick={() => handleNavigation('/notifications')}
-                                    className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                                    title="Notifications"
-                                >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
-                                    </svg>
-                                </button>
-
-                                {/* User Menu */}
-                                <div className="relative" ref={userMenuRef}>
-                                    <button
-                                        onClick={() => setShowUserMenu(!showUserMenu)}
-                                        className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                                    >
-                                        <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                                            <span className="text-white font-medium text-sm">
-                                                {(user?.name || user?.email)?.charAt(0)?.toUpperCase()}
-                                            </span>
-                                        </div>
-                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-                                        </svg>
-                                    </button>
-
-                                    {/* User Dropdown */}
-                                    {showUserMenu && (
-                                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
-                                            <div className="px-4 py-2 border-b border-gray-100">
-                                                <p className="text-sm font-medium text-gray-900">{user?.name || user?.email}</p>
-                                                <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
-                                            </div>
-                                            <button
-                                                onClick={() => handleNavigation('/profile')}
-                                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                                                </svg>
-                                                <span>Profile</span>
-                                            </button>
-                                            <div className="border-t border-gray-100 my-1"></div>
-                                            <button
-                                                onClick={handleLogout}
-                                                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-                                                </svg>
-                                                <span>Logout</span>
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </header>
+            <div className={`flex-1 min-w-0 transition-all duration-300 overflow-x-hidden ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'}`}>
+                {/* Shared Header Component */}
+                <AppHeader 
+                    searchQuery={typeof searchQuery !== 'undefined' ? searchQuery : ''}
+                    setSearchQuery={typeof setSearchQuery !== 'undefined' ? setSearchQuery : null}
+                    showUserMenu={typeof showUserMenu !== 'undefined' ? showUserMenu : false}
+                    setShowUserMenu={typeof setShowUserMenu !== 'undefined' ? setShowUserMenu : null}
+                    onToggleMobileMenu={() => setMobileOpen(!mobileOpen)}
+                />
 
                 {/* Main Content */}
                 <main className="p-6">
@@ -1258,33 +1088,61 @@ export default function Calendar() {
                                 </div>
                             )}
 
-                            {(user?.role === 'admin' || user?.role === 'lab_technician') && selectedBooking.status?.toLowerCase() === 'pending' && (
-                                <div className="flex space-x-3 pt-4 border-t border-gray-200">
-                                    <button
-                                        onClick={() => updateBookingStatus(selectedBooking.id, 'Confirmed')}
-                                        className="flex-1 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                                    >
-                                        Approve
-                                    </button>
-                                    <button
-                                        onClick={() => updateBookingStatus(selectedBooking.id, 'Cancelled')}
-                                        className="flex-1 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                                    >
-                                        Reject
-                                    </button>
-                                </div>
-                            )}
+                            {/* Action Buttons */}
+                            {(() => {
+                                const isApprover = user?.role === 'admin' || user?.role === 'master_admin' || user?.roleId === 7 || user?.role === 'lab_technician';
+                                const isOwnBooking = selectedBooking.user_id === (user?.userId || user?.id);
+                                const isPending = selectedBooking.status?.toLowerCase() === 'pending';
+                                const isCancellable = selectedBooking.status?.toLowerCase() !== 'cancelled' && selectedBooking.status?.toLowerCase() !== 'completed';
 
-                            {(user?.role === 'admin' || selectedBooking.user_id === user?.id) && (
-                                <div className="pt-4 border-t border-gray-200">
-                                    <button
-                                        onClick={() => deleteBooking(selectedBooking.id)}
-                                        className="w-full px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                                    >
-                                        Delete Booking
-                                    </button>
-                                </div>
-                            )}
+                                return (
+                                    <>
+                                        {isApprover && isPending && (
+                                            <div className="pt-4 border-t border-gray-200">
+                                                {isOwnBooking ? (
+                                                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-center font-medium">
+                                                        ⚠️ You requested this booking and cannot approve or reject your own request.
+                                                    </p>
+                                                ) : (
+                                                    <div className="flex space-x-3">
+                                                        <button
+                                                            onClick={() => updateBookingStatus(selectedBooking.id, 'approved')}
+                                                            className="flex-1 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-1.5 shadow-sm"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                                                            Approve
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                const reason = window.prompt('Please enter the reason for rejecting this booking:');
+                                                                if (reason && reason.trim()) {
+                                                                    updateBookingStatus(selectedBooking.id, 'rejected', reason.trim());
+                                                                }
+                                                            }}
+                                                            className="flex-1 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium flex items-center justify-center gap-1.5 shadow-sm"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                                            Reject
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {(isApprover || isOwnBooking) && isCancellable && (
+                                            <div className="pt-3 border-t border-gray-100">
+                                                <button
+                                                    onClick={() => deleteBooking(selectedBooking.id)}
+                                                    className="w-full px-4 py-2 text-sm text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors font-medium flex items-center justify-center gap-1.5"
+                                                >
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                    {isOwnBooking ? 'Cancel My Booking' : 'Cancel / Remove Booking'}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            })()}
                         </div>
 
                         <div className="flex justify-end p-6 border-t border-gray-200">

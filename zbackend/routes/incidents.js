@@ -147,6 +147,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST create new incident
+// POST create new incident
 router.post('/', validateIncident, async (req, res) => {
     try {
         const errors = validationResult(req);
@@ -158,7 +159,7 @@ router.post('/', validateIncident, async (req, res) => {
             });
         }
 
-        const incident = await incidentService.createIncident(req.body, req.user.userId);
+        const incident = await incidentService.createIncident(req.body, req.user, req);
         res.status(201).json({
             success: true,
             message: 'Incident reported successfully',
@@ -169,6 +170,45 @@ router.post('/', validateIncident, async (req, res) => {
         res.status(500).json({
             success: false,
             message: error.message || 'Failed to create incident',
+            error: error.message
+        });
+    }
+});
+
+// PATCH resolve incident with resolution notes and authenticated resolver
+router.patch('/:id/resolve', async (req, res) => {
+    try {
+        const { resolution_notes } = req.body;
+        if (!resolution_notes || !resolution_notes.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Resolution notes are required to resolve an incident'
+            });
+        }
+
+        const incident = await incidentService.resolveIncident(
+            req.params.id,
+            { resolution_notes: resolution_notes.trim() },
+            req.user,
+            req
+        );
+
+        res.json({
+            success: true,
+            message: 'Incident resolved successfully',
+            data: incident
+        });
+    } catch (error) {
+        console.error('Error resolving incident:', error);
+        if (error.message === 'Incident not found') {
+            return res.status(404).json({
+                success: false,
+                message: error.message
+            });
+        }
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to resolve incident',
             error: error.message
         });
     }
@@ -193,9 +233,7 @@ router.patch('/:id/status', async (req, res) => {
             });
         }
 
-        // Use req.user.id (old column) for FK reference on resolved_by; fall back to userId
-        const actorId = req.user.id || req.user.userId;
-        const incident = await incidentService.updateStatus(req.params.id, status, actorId);
+        const incident = await incidentService.updateStatus(req.params.id, status, req.user, req);
         res.json({
             success: true,
             message: 'Status updated successfully',
@@ -229,7 +267,7 @@ router.put('/:id', validateIncident, async (req, res) => {
             });
         }
 
-        const incident = await incidentService.updateIncident(req.params.id, req.body, req.user.userId);
+        const incident = await incidentService.updateIncident(req.params.id, req.body, req.user, req);
         res.json({
             success: true,
             message: 'Incident updated successfully',
@@ -254,7 +292,7 @@ router.put('/:id', validateIncident, async (req, res) => {
 // DELETE incident
 router.delete('/:id', async (req, res) => {
     try {
-        await incidentService.deleteIncident(req.params.id);
+        await incidentService.deleteIncident(req.params.id, req.user, req);
         res.json({
             success: true,
             message: 'Incident deleted successfully'

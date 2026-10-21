@@ -1,4 +1,5 @@
 // src/pages/Notifications.jsx - Professional Notifications with Sidebar and Backend Integration
+import { Sidebar, AppHeader } from '../components/common/Navigation'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
@@ -33,6 +34,7 @@ export default function Notifications() {
     const [showUserMenu, setShowUserMenu] = useState(false)
     const [showNotifications, setShowNotifications] = useState(false)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    const [mobileOpen, setMobileOpen] = useState(false)
     const [currentTime, setCurrentTime] = useState(new Date())
 
     const { user, isAuthenticated, logout } = useAuth()
@@ -698,222 +700,25 @@ export default function Notifications() {
 
     return (
         <div className="min-h-screen w-full bg-gray-50 flex">
-            {/* Sidebar */}
-            <div className={`fixed inset-y-0 left-0 z-50 ${sidebarCollapsed ? 'w-16' : 'w-64'} bg-white shadow-lg border-r border-gray-200 transition-all duration-300`}>
-                {/* Sidebar Header */}
-                <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-purple-600">
-                    {!sidebarCollapsed && (
-                        <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-white rounded-lg overflow-hidden p-1">
-                                <img 
-                                    src="/nec-logo.png" 
-                                    alt="NEC Logo" 
-                                    className="w-full h-full object-contain"
-                                />
-                            </div>
-                            <h1 className="text-xl font-bold text-white">
-                                NEC LabMS
-                            </h1>
-                        </div>
-                    )}
-                    <button
-                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        className="p-2 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors text-white"
-                    >
-                        <svg className={`w-5 h-5 transition-transform ${sidebarCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path>
-                        </svg>
-                    </button>
-                </div>
-
-                {/* Navigation Items */}
-                <nav className="mt-6 px-3">
-                    <div className="space-y-1">
-                        {navigationItems.filter(item => item.show).map((item) => {
-                            const isActive = location.pathname === item.path
-                            return (
-                                <button
-                                    key={item.id}
-                                    onClick={() => handleNavigation(item.path)}
-                                    className={`w-full flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${isActive
-                                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
-                                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                                        }`}
-                                    title={sidebarCollapsed ? item.title : ''}
-                                >
-                                    <div className="flex items-center justify-center w-5 h-5">
-                                        {item.icon}
-                                    </div>
-                                    {!sidebarCollapsed && (
-                                        <>
-                                            <span className="ml-3 flex-1 text-left">{item.title}</span>
-                                            {item.badge && (
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isActive ? 'bg-white/20 text-white' : (item.badgeColor || 'bg-blue-100 text-blue-800')
-                                                    }`}>
-                                                    {item.badge}
-                                                </span>
-                                            )}
-                                        </>
-                                    )}
-                                    {sidebarCollapsed && item.badge && (
-                                        <span className={`absolute left-8 top-2 w-2 h-2 rounded-full ${item.badgeColor || 'bg-blue-500'
-                                            }`}></span>
-                                    )}
-                                </button>
-                            )
-                        })}
-                    </div>
-                </nav>
-
-                {/* Sidebar Footer */}
-                {!sidebarCollapsed && (
-                    <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                                <span className="text-white font-medium text-sm">
-                                    {(user?.name || user?.email)?.charAt(0)?.toUpperCase()}
-                                </span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">
-                                    {user?.name || user?.email}
-                                </p>
-                                <p className="text-xs text-gray-500 capitalize">
-                                    {user?.role}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
+            {/* Shared Sidebar Component */}
+            <Sidebar 
+                sidebarCollapsed={sidebarCollapsed}
+                setSidebarCollapsed={setSidebarCollapsed}
+                currentPath="/notifications"
+                mobileOpen={mobileOpen}
+                setMobileOpen={setMobileOpen}
+            />
 
             {/* Main Content */}
-            <div className={`flex-1 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
-                {/* Top Header */}
-                <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
-                    <div className="px-6 py-4">
-                        <div className="flex items-center justify-between">
-                            {/* Search Bar */}
-                            <form onSubmit={handleSearch} className="flex-1 max-w-lg">
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        placeholder="Search notifications..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-2 bg-gray-100 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
-                                    />
-                                    <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                                    </svg>
-                                </div>
-                            </form>
-
-                            {/* Header Right Section */}
-                            <div className="flex items-center space-x-4">
-                                {/* Current Time */}
-                                <div className="hidden md:block text-sm text-gray-600">
-                                    {currentTime.toLocaleTimeString('en-US', {
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                        hour12: true
-                                    })}
-                                </div>
-
-                                {/* Last Refresh */}
-                                <div className="hidden md:block text-xs text-gray-500">
-                                    Last updated: {lastRefresh.toLocaleTimeString()}
-                                </div>
-
-                                {/* Refresh Button */}
-                                <button
-                                    onClick={handleRefresh}
-                                    disabled={isRefreshing}
-                                    className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
-                                    title={isRefreshing ? "Refreshing..." : "Refresh Notifications"}
-                                >
-                                    <svg className={`w-5 h-5 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                                    </svg>
-                                </button>
-
-                                {/* Enable Browser Notifications */}
-                                {Notification.permission !== 'granted' && (
-                                    <button
-                                        onClick={requestNotificationPermission}
-                                        className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-lg text-sm hover:bg-yellow-200 transition-colors"
-                                    >
-                                        Enable Notifications
-                                    </button>
-                                )}
-
-                                {/* Bulk Actions */}
-                                <div className="flex space-x-2">
-                                    <button
-                                        onClick={markAllAsRead}
-                                        disabled={unreadCount === 0}
-                                        className="px-3 py-1 bg-blue-100 text-blue-800 rounded-lg text-sm hover:bg-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        Mark All Read
-                                    </button>
-                                    <button
-                                        onClick={clearAllNotifications}
-                                        disabled={notifications.length === 0}
-                                        className="px-3 py-1 bg-red-100 text-red-800 rounded-lg text-sm hover:bg-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        Clear All
-                                    </button>
-                                </div>
-
-                                {/* User Menu */}
-                                <div className="relative" ref={userMenuRef}>
-                                    <button
-                                        onClick={() => setShowUserMenu(!showUserMenu)}
-                                        className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                                    >
-                                        <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                                            <span className="text-white font-medium text-sm">
-                                                {(user?.name || user?.email)?.charAt(0)?.toUpperCase()}
-                                            </span>
-                                        </div>
-                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-                                        </svg>
-                                    </button>
-
-                                    {/* User Dropdown */}
-                                    {showUserMenu && (
-                                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
-                                            <div className="px-4 py-2 border-b border-gray-100">
-                                                <p className="text-sm font-medium text-gray-900">{user?.name || user?.email}</p>
-                                                <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
-                                            </div>
-                                            <button
-                                                onClick={() => handleNavigation('/profile')}
-                                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                                                </svg>
-                                                <span>Profile</span>
-                                            </button>
-                                            <div className="border-t border-gray-100 my-1"></div>
-                                            <button
-                                                onClick={handleLogout}
-                                                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-                                                </svg>
-                                                <span>Logout</span>
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </header>
+            <div className={`flex-1 min-w-0 transition-all duration-300 overflow-x-hidden ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'}`}>
+                {/* Shared Header Component */}
+                <AppHeader 
+                    searchQuery={typeof searchQuery !== 'undefined' ? searchQuery : ''}
+                    setSearchQuery={typeof setSearchQuery !== 'undefined' ? setSearchQuery : null}
+                    showUserMenu={typeof showUserMenu !== 'undefined' ? showUserMenu : false}
+                    setShowUserMenu={typeof setShowUserMenu !== 'undefined' ? setShowUserMenu : null}
+                    onToggleMobileMenu={() => setMobileOpen(!mobileOpen)}
+                />
 
                 {/* Main Content */}
                 <main className="p-6">

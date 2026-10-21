@@ -95,12 +95,17 @@ const cleanExpiredSessions = () => {
 const getSession = (sessionId) => {
     if (!sessionId) return null;
     
-    const session = sessionStore.get(sessionId);
+    let session = sessionStore.get(sessionId);
+    if (!session) {
+        loadSessionsFromFile();
+        session = sessionStore.get(sessionId);
+    }
     if (!session) return null;
     
     // Check if session is expired
     if (new Date() > session.expiresAt) {
         sessionStore.delete(sessionId);
+        saveSessionsToFile();
         return null;
     }
     

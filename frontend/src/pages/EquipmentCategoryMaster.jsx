@@ -203,9 +203,9 @@ function AddCategoryModal({ isOpen, onClose, onCategoryAdded }) {
 
     return (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-gray-100 overflow-hidden max-h-[90vh] flex flex-col my-auto animate-in fade-in zoom-in-95 duration-200">
                 {/* Modal Header */}
-                <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-6 py-5 text-white flex items-center justify-between">
+                <div className="shrink-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-6 py-4 sm:py-5 text-white flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-md flex items-center justify-center border border-white/20">
                             <CategoryIcon icon={formData.icon} className="w-6 h-6 text-white" />
@@ -227,7 +227,7 @@ function AddCategoryModal({ isOpen, onClose, onCategoryAdded }) {
                 </div>
 
                 {/* Form */}
-                <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 min-h-0">
                     {error && (
                         <div className="p-3.5 bg-red-50 border-l-4 border-red-500 rounded-r-lg text-red-700 text-xs font-medium flex items-center gap-2">
                             <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -287,7 +287,7 @@ function AddCategoryModal({ isOpen, onClose, onCategoryAdded }) {
                         <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
                             Select Icon
                         </label>
-                        <div className="grid grid-cols-5 gap-2">
+                        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                             {AVAILABLE_ICONS.map(ic => {
                                 const isSelected = formData.icon === ic.id
                                 return (
@@ -486,9 +486,9 @@ function EditCategoryModal({ isOpen, onClose, category, onCategoryUpdated }) {
 
     return (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-gray-100 overflow-hidden max-h-[90vh] flex flex-col my-auto animate-in fade-in zoom-in-95 duration-200">
                 {/* Header */}
-                <div className="bg-gradient-to-r from-amber-600 to-orange-600 px-6 py-5 text-white flex items-center justify-between">
+                <div className="shrink-0 bg-gradient-to-r from-amber-600 to-orange-600 px-6 py-4 sm:py-5 text-white flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-md flex items-center justify-center border border-white/20">
                             <CategoryIcon icon={formData.icon} className="w-6 h-6 text-white" />
@@ -510,7 +510,7 @@ function EditCategoryModal({ isOpen, onClose, category, onCategoryUpdated }) {
                 </div>
 
                 {/* Form */}
-                <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 min-h-0">
                     {error && (
                         <div className="p-3.5 bg-red-50 border-l-4 border-red-500 rounded-r-lg text-red-700 text-xs font-medium flex items-center gap-2">
                             <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -577,7 +577,7 @@ function EditCategoryModal({ isOpen, onClose, category, onCategoryUpdated }) {
                         <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
                             Select Icon
                         </label>
-                        <div className="grid grid-cols-5 gap-2">
+                        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                             {AVAILABLE_ICONS.map(ic => {
                                 const isSelected = formData.icon === ic.id
                                 return (
@@ -735,9 +735,9 @@ function ViewCategoryModal({ isOpen, onClose, categoryId, onEditCategory }) {
 
     return (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-gray-100 overflow-hidden max-h-[90vh] flex flex-col my-auto animate-in fade-in zoom-in-95 duration-200">
                 {/* Header */}
-                <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-6 py-5 text-white flex items-center justify-between">
+                <div className="shrink-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-6 py-4 sm:py-5 text-white flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                         <div className="w-12 h-12 rounded-xl bg-white/15 backdrop-blur-md flex items-center justify-center border border-white/20">
                             {details ? <CategoryIcon icon={details.icon} className="w-7 h-7 text-white" /> : <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
@@ -768,7 +768,7 @@ function ViewCategoryModal({ isOpen, onClose, categoryId, onEditCategory }) {
                 </div>
 
                 {/* Content */}
-                <div className="p-6">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 min-h-0">
                     {loading ? (
                         <div className="text-center py-12">
                             <div className="w-10 h-10 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-3"></div>
@@ -1031,9 +1031,30 @@ export default function EquipmentCategoryMaster() {
 
     // Layout state
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    const [mobileOpen, setMobileOpen] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const [showUserMenu, setShowUserMenu] = useState(false)
     const [showNotifications, setShowNotifications] = useState(false)
+    const [permissions, setPermissions] = useState(null)
+
+    useEffect(() => {
+        let isMounted = true
+        fetch('/api/roles/my-permissions', { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (isMounted && data.success && data.data) {
+                    setPermissions(data.data)
+                }
+            })
+            .catch(() => {})
+        return () => { isMounted = false }
+    }, [user])
+
+    const isMasterAdmin = user?.role === 'master_admin' || user?.roleId === 7
+    const isAdmin = user?.role === 'admin' || user?.roleId === 6 || isMasterAdmin
+    const canCreateCategory = isMasterAdmin || isAdmin || Boolean(permissions?.equipment_categories?.can_create)
+    const canEditCategory = isMasterAdmin || isAdmin || Boolean(permissions?.equipment_categories?.can_edit)
+    const canDeleteCategory = isMasterAdmin || isAdmin || Boolean(permissions?.equipment_categories?.can_delete)
 
     // Data state
     const [categories, setCategories] = useState([])
@@ -1356,13 +1377,15 @@ export default function EquipmentCategoryMaster() {
                 sidebarCollapsed={sidebarCollapsed}
                 setSidebarCollapsed={setSidebarCollapsed}
                 currentPath={location.pathname}
+                mobileOpen={mobileOpen}
+                setMobileOpen={setMobileOpen}
                 stats={{
                     totalCategories: stats.totalCategories
                 }}
             />
 
             {/* Main Content Area */}
-            <div className={`flex-1 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} flex flex-col min-w-0`}>
+            <div className={`flex-1 min-w-0 transition-all duration-300 overflow-x-hidden ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'} flex flex-col`}>
                 <AppHeader
                     searchQuery={searchQuery}
                     setSearchQuery={setSearchQuery}
@@ -1370,6 +1393,7 @@ export default function EquipmentCategoryMaster() {
                     setShowUserMenu={setShowUserMenu}
                     showNotifications={showNotifications}
                     setShowNotifications={setShowNotifications}
+                    onToggleMobileMenu={() => setMobileOpen(!mobileOpen)}
                 />
 
                 <main className="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6">
@@ -1404,7 +1428,7 @@ export default function EquipmentCategoryMaster() {
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-2.5">
+                            <div className="flex flex-wrap items-center gap-2.5">
                                 <button
                                     onClick={() => navigate('/equipment')}
                                     className="px-3.5 py-2 text-xs font-semibold text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 shadow-2xs transition flex items-center gap-1.5"
@@ -1416,15 +1440,17 @@ export default function EquipmentCategoryMaster() {
                                     <span>Equipment Inventory</span>
                                 </button>
 
-                                <button
-                                    onClick={() => setIsAddModalOpen(true)}
-                                    className="px-4 py-2 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-1.5"
-                                >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                                    </svg>
-                                    <span>Add New Category</span>
-                                </button>
+                                {canCreateCategory && (
+                                    <button
+                                        onClick={() => setIsAddModalOpen(true)}
+                                        className="px-4 py-2 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        <span>Add New Category</span>
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -1843,42 +1869,46 @@ export default function EquipmentCategoryMaster() {
                                                             </div>
 
                                                             {/* Edit Action */}
-                                                            <div className="relative group/btn">
-                                                                <button
-                                                                    onClick={() => setSelectedCategoryForEdit(cat)}
-                                                                    className="w-8 h-8 rounded-lg flex items-center justify-center text-amber-600 bg-amber-50/80 hover:bg-amber-600 hover:text-white border border-amber-200 hover:border-amber-600 shadow-2xs transition-all duration-150"
-                                                                    aria-label="Edit Category"
-                                                                >
-                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                                                    </svg>
-                                                                </button>
-                                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/btn:flex flex-col items-center pointer-events-none z-30">
-                                                                    <span className="bg-gray-900 text-white text-[11px] font-medium px-2 py-0.5 rounded shadow-md whitespace-nowrap">
-                                                                        Edit
-                                                                    </span>
-                                                                    <span className="w-1.5 h-1.5 bg-gray-900 rotate-45 -mt-0.5"></span>
+                                                            {canEditCategory && (
+                                                                <div className="relative group/btn">
+                                                                    <button
+                                                                        onClick={() => setSelectedCategoryForEdit(cat)}
+                                                                        className="w-8 h-8 rounded-lg flex items-center justify-center text-amber-600 bg-amber-50/80 hover:bg-amber-600 hover:text-white border border-amber-200 hover:border-amber-600 shadow-2xs transition-all duration-150 cursor-pointer"
+                                                                        aria-label="Edit Category"
+                                                                    >
+                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                                        </svg>
+                                                                    </button>
+                                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/btn:flex flex-col items-center pointer-events-none z-30">
+                                                                        <span className="bg-gray-900 text-white text-[11px] font-medium px-2 py-0.5 rounded shadow-md whitespace-nowrap">
+                                                                            Edit
+                                                                        </span>
+                                                                        <span className="w-1.5 h-1.5 bg-gray-900 rotate-45 -mt-0.5"></span>
+                                                                    </div>
                                                                 </div>
-                                                            </div>
+                                                            )}
 
                                                             {/* Delete Action */}
-                                                            <div className="relative group/btn">
-                                                                <button
-                                                                    onClick={() => setSelectedCategoryForDelete(cat)}
-                                                                    className="w-8 h-8 rounded-lg flex items-center justify-center text-red-600 bg-red-50/80 hover:bg-red-600 hover:text-white border border-red-200 hover:border-red-600 shadow-2xs transition-all duration-150"
-                                                                    aria-label="Delete Category"
-                                                                >
-                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                                    </svg>
-                                                                </button>
-                                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/btn:flex flex-col items-center pointer-events-none z-30">
-                                                                    <span className="bg-gray-900 text-white text-[11px] font-medium px-2 py-0.5 rounded shadow-md whitespace-nowrap">
-                                                                        Delete
-                                                                    </span>
-                                                                    <span className="w-1.5 h-1.5 bg-gray-900 rotate-45 -mt-0.5"></span>
+                                                            {canDeleteCategory && (
+                                                                <div className="relative group/btn">
+                                                                    <button
+                                                                        onClick={() => setSelectedCategoryForDelete(cat)}
+                                                                        className="w-8 h-8 rounded-lg flex items-center justify-center text-red-600 bg-red-50/80 hover:bg-red-600 hover:text-white border border-red-200 hover:border-red-600 shadow-2xs transition-all duration-150 cursor-pointer"
+                                                                        aria-label="Delete Category"
+                                                                    >
+                                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                        </svg>
+                                                                    </button>
+                                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/btn:flex flex-col items-center pointer-events-none z-30">
+                                                                        <span className="bg-gray-900 text-white text-[11px] font-medium px-2 py-0.5 rounded shadow-md whitespace-nowrap">
+                                                                            Delete
+                                                                        </span>
+                                                                        <span className="w-1.5 h-1.5 bg-gray-900 rotate-45 -mt-0.5"></span>
+                                                                    </div>
                                                                 </div>
-                                                            </div>
+                                                            )}
                                                         </div>
                                                     </td>
                                                 </tr>

@@ -24,6 +24,11 @@ const Department = sequelize.define(
       allowNull: false,
       defaultValue: 'Active',
     },
+    description: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: 'Department description and notes',
+    },
     companyId: {
       type: DataTypes.INTEGER,
       allowNull: false,

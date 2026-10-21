@@ -1,6 +1,7 @@
 // Department Service - Business Logic for Department Management
-const { Department, User } = require('../models');
+const { Department, User, Lab } = require('../models');
 const { Op } = require('sequelize');
+const auditService = require('./auditService');
 
 class DepartmentService {
     /**
@@ -34,13 +35,13 @@ class DepartmentService {
                 {
                     model: User,
                     as: 'creator',
-                    attributes: ['id', 'name', 'email', 'userName', 'userMail'],
+                    attributes: ['userId', 'name', 'email', 'userName', 'userMail'],
                     required: false
                 },
                 {
                     model: User,
                     as: 'updater',
-                    attributes: ['id', 'name', 'email', 'userName', 'userMail'],
+                    attributes: ['userId', 'name', 'email', 'userName', 'userMail'],
                     required: false
                 }
             ],
@@ -69,20 +70,20 @@ class DepartmentService {
                 {
                     model: User,
                     as: 'users',
-                    attributes: ['id', 'userId', 'name', 'userName', 'email', 'userMail', 'roleId'],
-                    limit: 10,
-                    order: [['created_at', 'DESC']]
+                    attributes: ['userId', 'name', 'userName', 'email', 'userMail', 'roleId', 'position', 'status'],
+                    limit: 20,
+                    order: [['createdAt', 'DESC']]
                 },
                 {
                     model: User,
                     as: 'creator',
-                    attributes: ['id', 'name', 'email', 'userName', 'userMail'],
+                    attributes: ['userId', 'name', 'email', 'userName', 'userMail'],
                     required: false
                 },
                 {
                     model: User,
                     as: 'updater',
-                    attributes: ['id', 'name', 'email', 'userName', 'userMail'],
+                    attributes: ['userId', 'name', 'email', 'userName', 'userMail'],
                     required: false
                 }
             ]
@@ -99,7 +100,7 @@ class DepartmentService {
      * Create new department
      */
     async createDepartment(departmentData, userId) {
-        const { departmentName, departmentAcr, status = 'Active', companyId = 0 } = departmentData;
+        const { departmentName, departmentAcr, description, status = 'Active', companyId = 0 } = departmentData;
 
         // Check if department already exists for this company
         const existingDepartment = await Department.findOne({
@@ -118,11 +119,21 @@ class DepartmentService {
 
         const department = await Department.create({
             departmentName,
-            departmentAcr,
+            departmentAcr: departmentAcr.trim().toUpperCase(),
+            description: description ? description.trim() : null,
             status,
             companyId,
             createdBy: userId,
             updatedBy: userId
+        });
+
+        // Audit log
+        await auditService.logEvent({
+            entity_type: 'Department',
+            entity_id: department.departmentId,
+            action: 'CREATE',
+            new_values: department.toJSON(),
+            user_id: userId
         });
 
         return department;
@@ -138,7 +149,8 @@ class DepartmentService {
             throw new Error('Department not found');
         }
 
-        const { departmentName, departmentAcr, status } = departmentData;
+        const previousValues = department.toJSON();
+        const { departmentName, departmentAcr, description, status } = departmentData;
 
         // Check if new department name/acr already exists (if changing)
         if (departmentName || departmentAcr) {
@@ -147,7 +159,7 @@ class DepartmentService {
                 checkConditions.push({ departmentName });
             }
             if (departmentAcr && departmentAcr !== department.departmentAcr) {
-                checkConditions.push({ departmentAcr });
+                checkConditions.push({ departmentAcr: departmentAcr.trim().toUpperCase() });
             }
 
             if (checkConditions.length > 0) {
@@ -167,18 +179,29 @@ class DepartmentService {
 
         await department.update({
             ...(departmentName && { departmentName }),
-            ...(departmentAcr && { departmentAcr }),
+            ...(departmentAcr && { departmentAcr: departmentAcr.trim().toUpperCase() }),
+            ...(description !== undefined && { description: description ? description.trim() : null }),
             ...(status && { status }),
             updatedBy: userId
+        });
+
+        // Audit log
+        await auditService.logEvent({
+            entity_type: 'Department',
+            entity_id: department.departmentId,
+            action: 'UPDATE',
+            previous_values: previousValues,
+            new_values: department.toJSON(),
+            user_id: userId
         });
 
         return department;
     }
 
     /**
-     * Delete department (soft delete)
+     * Delete department (soft delete / safe delete)
      */
-    async deleteDepartment(departmentId) {
+    async deleteDepartment(departmentId, userId = null) {
         const department = await Department.findByPk(departmentId);
 
         if (!department) {
@@ -191,10 +214,34 @@ class DepartmentService {
         });
 
         if (usersCount > 0) {
-            throw new Error(`Cannot delete department. It has ${usersCount} user(s) assigned.`);
+            throw new Error(`Cannot delete department "${department.departmentName}". It has ${usersCount} staff/user(s) assigned.`);
         }
 
+        // Check if department is associated with any labs
+        const labCount = await Lab.count({
+            where: {
+                [Op.or]: [
+                    { department_id: departmentId },
+                    { lab_type: department.departmentAcr.toLowerCase() }
+                ]
+            }
+        });
+
+        if (labCount > 0) {
+            throw new Error(`Cannot delete department "${department.departmentName}". It has ${labCount} lab(s) associated with it.`);
+        }
+
+        const prevValues = department.toJSON();
         await department.destroy();
+
+        // Audit log
+        await auditService.logEvent({
+            entity_type: 'Department',
+            entity_id: departmentId,
+            action: 'DELETE',
+            previous_values: prevValues,
+            user_id: userId
+        });
 
         return { message: 'Department deleted successfully' };
     }
@@ -216,14 +263,14 @@ class DepartmentService {
             where: { ...whereClause, status: 'Archived' } 
         });
 
-        // Get user count per department
+        // Get user count per department using users.userId
         const departmentsWithUserCount = await Department.findAll({
             where: whereClause,
             attributes: [
                 'departmentId',
                 'departmentName',
                 'departmentAcr',
-                [require('../config/database').sequelize.fn('COUNT', require('../config/database').sequelize.col('users.id')), 'userCount']
+                [require('../config/database').sequelize.fn('COUNT', require('../config/database').sequelize.col('users.userId')), 'userCount']
             ],
             include: [{
                 model: User,

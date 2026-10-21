@@ -33,6 +33,16 @@ const Incident = sequelize.define('Incident', {
         onUpdate: 'CASCADE',
         onDelete: 'SET NULL'
     },
+    lab_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: 'labs',
+            key: 'id'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'SET NULL'
+    },
     priority: {
         type: DataTypes.ENUM('low', 'medium', 'high', 'critical'),
         allowNull: false,
@@ -57,7 +67,7 @@ const Incident = sequelize.define('Incident', {
         allowNull: false,
         references: {
             model: 'users',
-            key: 'id'
+            key: 'userId'
         },
         onUpdate: 'CASCADE',
         onDelete: 'RESTRICT'
@@ -67,7 +77,7 @@ const Incident = sequelize.define('Incident', {
         allowNull: true,
         references: {
             model: 'users',
-            key: 'id'
+            key: 'userId'
         },
         onUpdate: 'CASCADE',
         onDelete: 'SET NULL'
@@ -85,7 +95,7 @@ const Incident = sequelize.define('Incident', {
         allowNull: true,
         references: {
             model: 'users',
-            key: 'id'
+            key: 'userId'
         },
         onUpdate: 'CASCADE',
         onDelete: 'SET NULL'

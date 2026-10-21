@@ -1,14 +1,15 @@
-// src/pages/UserManagement.jsx - Professional User Management with Sidebar
+import { Sidebar, AppHeader } from '../components/common/Navigation'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { usersAPI } from '../services/api'
+import { usersAPI, departmentsAPI } from '../services/api'
 import SmartSearchBar from '../components/common/SmartSearchBar'
 import Pagination from '../components/common/Pagination'
 
 export default function UserManagement() {
     // User management specific state
     const [users, setUsers] = useState([])
+    const [departmentsList, setDepartmentsList] = useState([])
     const [showUserForm, setShowUserForm] = useState(false)
     const [editingUser, setEditingUser] = useState(null)
     const [stats, setStats] = useState({
@@ -25,8 +26,12 @@ export default function UserManagement() {
     const [newUser, setNewUser] = useState({
         name: '',
         email: '',
-        role: 'student',
-        password: ''
+        role: 'teacher',
+        password: '',
+        staffId: '',
+        phone: '',
+        position: '',
+        departmentId: ''
     })
 
     // Dashboard-style state
@@ -37,6 +42,7 @@ export default function UserManagement() {
     const [showUserMenu, setShowUserMenu] = useState(false)
     const [showNotifications, setShowNotifications] = useState(false)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    const [mobileOpen, setMobileOpen] = useState(false)
     const [currentTime, setCurrentTime] = useState(new Date())
 
     const { user, logout, isAuthenticated } = useAuth()
@@ -255,10 +261,15 @@ export default function UserManagement() {
 
         try {
             console.log('🔄 Loading user data...')
-            await Promise.all([
+            const [usersRes, statsRes, deptsRes] = await Promise.allSettled([
                 fetchUsers(),
-                fetchUserStats()
+                fetchUserStats(),
+                departmentsAPI.getAll()
             ])
+            if (deptsRes.status === 'fulfilled' && deptsRes.value) {
+                const depts = deptsRes.value.data?.departments || deptsRes.value.departments || deptsRes.value.data || []
+                setDepartmentsList(Array.isArray(depts) ? depts : [])
+            }
             console.log('✅ User data loaded successfully')
         } catch (err) {
             console.error('❌ Error loading user data:', err)
@@ -291,9 +302,16 @@ export default function UserManagement() {
                     ...u,
                     id: normalizedId,
                     userId: u.userId ?? normalizedId,
+                    staffId: u.staffId || u.userNumber || `STF${normalizedId}`,
+                    userNumber: u.userNumber || u.staffId || `STF${normalizedId}`,
                     name: u.name ?? u.userName ?? '',
                     email: u.email ?? u.userMail ?? '',
+                    phone: u.phone || '',
+                    position: u.position || u.designation || '',
+                    department: u.department || 'General',
+                    departmentId: u.departmentId,
                     role: u.role ?? '',
+                    assignedLabs: u.assignedLabs || [],
                     _rowKey: normalizedId ?? `${u.email ?? u.userMail ?? 'user'}-${index}`,
                 }
             })
@@ -404,7 +422,14 @@ export default function UserManagement() {
     }
 
     const handleEdit = (userItem) => {
-        setEditingUser({ ...userItem, password: '' })
+        setEditingUser({
+            ...userItem,
+            staffId: userItem.staffId || userItem.userNumber || '',
+            phone: userItem.phone || '',
+            position: userItem.position || userItem.designation || '',
+            departmentId: userItem.departmentId ? String(userItem.departmentId) : '',
+            password: ''
+        })
         setShowUserForm(true)
     }
 
@@ -451,6 +476,13 @@ export default function UserManagement() {
             return
         }
 
+        // Safety check: Prevent deleting user assigned as in-charge of active labs
+        if (userItem.assignedLabs && userItem.assignedLabs.length > 0) {
+            const labNames = userItem.assignedLabs.map(l => l.name).join(', ')
+            alert(`⚠️ Cannot delete "${userItem.name}"!\n\nThis staff member is currently assigned as in-charge for: ${labNames}.\n\nPlease reassign these labs first in Lab Management, or deactivate this user account instead.`)
+            return
+        }
+
         // Double confirmation for permanent deletion
         if (!window.confirm(`⚠️ Are you sure you want to PERMANENTLY DELETE user "${userItem.name}"?\n\nThis action CANNOT be undone!`)) return
         
@@ -478,7 +510,7 @@ export default function UserManagement() {
             }
             
             // Check if it's a foreign key constraint error
-            if (err.message.includes('Cannot delete user') || err.message.includes('related records')) {
+            if (err.message.includes('Cannot delete user') || err.message.includes('related records') || err.message.includes('assigned as in-charge')) {
                 const errorMsg = err.message
                 setError(errorMsg)
                 // Show alert for better visibility
@@ -499,7 +531,16 @@ export default function UserManagement() {
     const closeForm = () => {
         setShowUserForm(false)
         setEditingUser(null)
-        setNewUser({ name: '', email: '', role: 'student', password: '' })
+        setNewUser({
+            name: '',
+            email: '',
+            role: 'teacher',
+            password: '',
+            staffId: '',
+            phone: '',
+            position: '',
+            departmentId: ''
+        })
     }
 
     const showSuccessMessage = (message) => {
@@ -629,202 +670,25 @@ export default function UserManagement() {
 
     return (
         <div className="min-h-screen w-full bg-gray-50 flex">
-            {/* Sidebar */}
-            <div className={`fixed inset-y-0 left-0 z-50 ${sidebarCollapsed ? 'w-16' : 'w-64'} bg-white shadow-lg border-r border-gray-200 transition-all duration-300`}>
-                {/* Sidebar Header */}
-                <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-purple-600">
-                    {!sidebarCollapsed && (
-                        <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-white rounded-lg overflow-hidden p-1">
-                                <img 
-                                    src="/nec-logo.png" 
-                                    alt="NEC Logo" 
-                                    className="w-full h-full object-contain"
-                                />
-                            </div>
-                            <h1 className="text-xl font-bold text-white">
-                                NEC LabMS
-                            </h1>
-                        </div>
-                    )}
-                    <button
-                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        className="p-2 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors text-white"
-                    >
-                        <svg className={`w-5 h-5 transition-transform ${sidebarCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path>
-                        </svg>
-                    </button>
-                </div>
-
-                {/* Navigation Items */}
-                <nav className="mt-6 px-3">
-                    <div className="space-y-1">
-                        {navigationItems.filter(item => item.show).map((item) => {
-                            const isActive = location.pathname === item.path
-                            return (
-                                <button
-                                    key={item.id}
-                                    onClick={() => handleNavigation(item.path)}
-                                    className={`w-full flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${isActive
-                                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
-                                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                                        }`}
-                                    title={sidebarCollapsed ? item.title : ''}
-                                >
-                                    <div className="flex items-center justify-center w-5 h-5">
-                                        {item.icon}
-                                    </div>
-                                    {!sidebarCollapsed && (
-                                        <>
-                                            <span className="ml-3 flex-1 text-left">{item.title}</span>
-                                            {item.badge && (
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isActive ? 'bg-white/20 text-white' : (item.badgeColor || 'bg-blue-100 text-blue-800')
-                                                    }`}>
-                                                    {item.badge}
-                                                </span>
-                                            )}
-                                        </>
-                                    )}
-                                    {sidebarCollapsed && item.badge && (
-                                        <span className={`absolute left-8 top-2 w-2 h-2 rounded-full ${item.badgeColor || 'bg-blue-500'
-                                            }`}></span>
-                                    )}
-                                </button>
-                            )
-                        })}
-                    </div>
-                </nav>
-
-                {/* Sidebar Footer */}
-                {!sidebarCollapsed && (
-                    <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                                <span className="text-white font-medium text-sm">
-                                    {(user?.name || user?.email)?.charAt(0)?.toUpperCase()}
-                                </span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">
-                                    {user?.name || user?.email}
-                                </p>
-                                <p className="text-xs text-gray-500 capitalize">
-                                    {user?.role}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
+            {/* Shared Sidebar Component */}
+            <Sidebar 
+                sidebarCollapsed={sidebarCollapsed}
+                setSidebarCollapsed={setSidebarCollapsed}
+                currentPath="/users"
+                mobileOpen={mobileOpen}
+                setMobileOpen={setMobileOpen}
+            />
 
             {/* Main Content */}
-            <div className={`flex-1 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
-                {/* Top Header */}
-                <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
-                    <div className="px-6 py-4">
-                        <div className="flex items-center justify-between">
-                            {/* Search Bar */}
-                            <form onSubmit={handleSearch} className="flex-1 max-w-lg">
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        placeholder="Search users..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-2 bg-gray-100 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
-                                    />
-                                    <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                                    </svg>
-                                </div>
-                            </form>
-
-                            {/* Header Right Section */}
-                            <div className="flex items-center space-x-4">
-                                {/* Current Time */}
-                                <div className="hidden md:block text-sm text-gray-600">
-                                    {currentTime.toLocaleTimeString('en-US', {
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                        hour12: true
-                                    })}
-                                </div>
-
-                                {/* Refresh Button */}
-                                <button
-                                    onClick={handleRefresh}
-                                    disabled={isRefreshing}
-                                    className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
-                                    title={isRefreshing ? "Refreshing..." : "Refresh Data"}
-                                >
-                                    <svg className={`w-5 h-5 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                                    </svg>
-                                </button>
-
-                                {/* Add User Button - Admin Only */}
-                                {user?.role === 'admin' && (
-                                    <button
-                                        onClick={() => setShowUserForm(true)}
-                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-                                    >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                                        </svg>
-                                        <span>Add User</span>
-                                    </button>
-                                )}
-
-                                {/* User Menu */}
-                                <div className="relative" ref={userMenuRef}>
-                                    <button
-                                        onClick={() => setShowUserMenu(!showUserMenu)}
-                                        className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                                    >
-                                        <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                                            <span className="text-white font-medium text-sm">
-                                                {(user?.name || user?.email)?.charAt(0)?.toUpperCase()}
-                                            </span>
-                                        </div>
-                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-                                        </svg>
-                                    </button>
-
-                                    {/* User Dropdown */}
-                                    {showUserMenu && (
-                                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
-                                            <div className="px-4 py-2 border-b border-gray-100">
-                                                <p className="text-sm font-medium text-gray-900">{user?.name || user?.email}</p>
-                                                <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
-                                            </div>
-                                            <button
-                                                onClick={() => handleNavigation('/profile')}
-                                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                                                </svg>
-                                                <span>Profile</span>
-                                            </button>
-                                            <div className="border-t border-gray-100 my-1"></div>
-                                            <button
-                                                onClick={handleLogout}
-                                                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-                                                </svg>
-                                                <span>Logout</span>
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </header>
+            <div className={`flex-1 min-w-0 transition-all duration-300 overflow-x-hidden ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'}`}>
+                {/* Shared Header Component */}
+                <AppHeader 
+                    searchQuery={typeof searchQuery !== 'undefined' ? searchQuery : ''}
+                    setSearchQuery={typeof setSearchQuery !== 'undefined' ? setSearchQuery : null}
+                    showUserMenu={typeof showUserMenu !== 'undefined' ? showUserMenu : false}
+                    setShowUserMenu={typeof setShowUserMenu !== 'undefined' ? setShowUserMenu : null}
+                    onToggleMobileMenu={() => setMobileOpen(!mobileOpen)}
+                />
 
                 {/* Main Content */}
                 <main className="p-6">
@@ -877,69 +741,161 @@ export default function UserManagement() {
 
                                     <form onSubmit={handleSubmit} className="space-y-4">
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                                            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                                                Staff ID / User ID <span className="text-gray-400 font-normal text-xs">(optional - auto-generated if blank)</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                name="staffId"
+                                                value={editingUser ? (editingUser.staffId || editingUser.userNumber || '') : newUser.staffId}
+                                                onChange={handleInputChange}
+                                                placeholder="e.g., STF1023 or USR001"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Full Name <span className="text-red-500">*</span></label>
                                             <input
                                                 type="text"
                                                 name="name"
                                                 value={editingUser ? editingUser.name : newUser.name}
                                                 onChange={handleInputChange}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                placeholder="e.g., Dr. Rajesh Kumar"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                                 required
                                             />
                                         </div>
 
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Email Address <span className="text-red-500">*</span></label>
                                             <input
                                                 type="email"
                                                 name="email"
                                                 value={editingUser ? editingUser.email : newUser.email}
                                                 onChange={handleInputChange}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                placeholder="staff@nec.edu.in"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                                 required
                                             />
                                         </div>
 
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
-                                            <select
-                                                name="role"
-                                                value={editingUser ? editingUser.role : newUser.role}
-                                                onChange={handleInputChange}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                            >
-                                                <option value="student">Student</option>
-                                                <option value="teacher">Teacher</option>
-                                                <option value="lab_assistant">Lab Assistant</option>
-                                                <option value="admin">Admin</option>
-                                            </select>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Phone Number</label>
+                                                <input
+                                                    type="tel"
+                                                    name="phone"
+                                                    value={editingUser ? (editingUser.phone || '') : newUser.phone}
+                                                    onChange={handleInputChange}
+                                                    placeholder="+91 9876543210"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Designation</label>
+                                                <input
+                                                    type="text"
+                                                    name="position"
+                                                    value={editingUser ? (editingUser.position || '') : newUser.position}
+                                                    onChange={handleInputChange}
+                                                    placeholder="e.g., Lab Assistant"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                                />
+                                            </div>
                                         </div>
 
-                                        {!editingUser && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                                                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Department</label>
+                                                <select
+                                                    name="departmentId"
+                                                    value={editingUser ? (editingUser.departmentId || '') : newUser.departmentId}
+                                                    onChange={handleInputChange}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+                                                >
+                                                    <option value="">-- No Department --</option>
+                                                    {departmentsList.map(d => (
+                                                        <option key={d.departmentId} value={d.departmentId}>
+                                                            {d.departmentName} ({d.departmentAcr})
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Role / Access</label>
+                                                <select
+                                                    name="role"
+                                                    value={editingUser ? editingUser.role : newUser.role}
+                                                    onChange={handleInputChange}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+                                                >
+                                                    <option value="student">Student</option>
+                                                    <option value="faculty">Faculty</option>
+                                                    <option value="teacher">Teacher</option>
+                                                    <option value="lab_assistant">Lab Assistant</option>
+                                                    <option value="lab_technician">Lab Technician</option>
+                                                    <option value="admin">Admin</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {!editingUser ? (
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Password <span className="text-red-500">*</span></label>
                                                 <input
                                                     type="password"
                                                     name="password"
                                                     value={newUser.password}
                                                     onChange={handleInputChange}
-                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                    required={!editingUser}
+                                                    placeholder="Minimum 6 characters"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                                    required
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Change Password <span className="text-gray-400 font-normal">(leave blank to keep current)</span></label>
+                                                <input
+                                                    type="password"
+                                                    name="password"
+                                                    value={editingUser.password || ''}
+                                                    onChange={handleInputChange}
+                                                    placeholder="Enter new password"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                                 />
                                             </div>
                                         )}
 
-                                        <div className="flex justify-end space-x-3 pt-4">
+                                        {/* Assigned Labs Badge (if staff member is in-charge of labs) */}
+                                        {editingUser && editingUser.assignedLabs && editingUser.assignedLabs.length > 0 && (
+                                            <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200">
+                                                <p className="text-xs font-bold text-blue-900 mb-1.5 flex items-center gap-1">
+                                                    <span>🏛️</span> Assigned Labs In-Charge:
+                                                </p>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {editingUser.assignedLabs.map(lab => (
+                                                        <span key={lab.id} className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                                                            {lab.name} ({lab.lab_type?.toUpperCase()})
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
                                             <button
                                                 type="button"
                                                 onClick={closeForm}
-                                                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                                             >
-                                                Cancel
+                                                Cancel (Esc)
                                             </button>
                                             <button
                                                 type="submit"
-                                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                                className="px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
                                             >
                                                 {editingUser ? 'Update User' : 'Add User'}
                                             </button>
@@ -1055,46 +1011,74 @@ export default function UserManagement() {
                             <table className="w-full">
                                 <thead className="bg-gray-50">
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User ID</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Login</th>
+                                        <th className="px-5 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Staff ID</th>
+                                        <th className="px-5 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Name & Title</th>
+                                        <th className="px-5 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Contact</th>
+                                        <th className="px-5 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Department</th>
+                                        <th className="px-5 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Role</th>
+                                        <th className="px-5 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Assigned Labs</th>
+                                        <th className="px-5 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
                                         {user?.role === 'admin' && (
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                            <th className="px-5 py-3.5 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
                                         )}
                                     </tr>
                                 </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
+                                <tbody className="bg-white divide-y divide-gray-100 text-sm">
                                     {paginatedUsers.length > 0 ? (
                                         paginatedUsers.map((userItem) => (
-                                            <tr key={userItem._rowKey} className="hover:bg-gray-50">
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                    #{userItem.id}
+                                            <tr key={userItem._rowKey} className="hover:bg-slate-50/70 transition-colors">
+                                                <td className="px-5 py-4 whitespace-nowrap">
+                                                    <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold border border-slate-200">
+                                                        {userItem.staffId || userItem.userNumber || `#${userItem.id}`}
+                                                    </span>
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                    {userItem.name || 'N/A'}
+                                                <td className="px-5 py-4 whitespace-nowrap">
+                                                    <div className="font-semibold text-gray-900">{userItem.name || 'N/A'}</div>
+                                                    {userItem.position && (
+                                                        <div className="text-xs text-gray-500">{userItem.position}</div>
+                                                    )}
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {userItem.email || 'N/A'}
+                                                <td className="px-5 py-4 whitespace-nowrap">
+                                                    <div className="text-xs font-medium text-gray-900">{userItem.email || 'N/A'}</div>
+                                                    {userItem.phone && (
+                                                        <div className="text-xs text-gray-500 font-mono">{userItem.phone}</div>
+                                                    )}
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getRoleColor(userItem.role)}`}>
+                                                <td className="px-5 py-4 whitespace-nowrap">
+                                                    <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                                        {userItem.department || 'General'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-5 py-4 whitespace-nowrap">
+                                                    <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${getRoleColor(userItem.role)}`}>
                                                         {userItem.role ? userItem.role.replace('_', ' ') : 'N/A'}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(userItem.status)}`}>
+                                                <td className="px-5 py-4">
+                                                    {userItem.assignedLabs && userItem.assignedLabs.length > 0 ? (
+                                                        <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                                            {userItem.assignedLabs.map(lab => (
+                                                                <span 
+                                                                    key={lab.id} 
+                                                                    className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200 truncate"
+                                                                    title={`In-charge of ${lab.name} (${lab.location || 'Campus'})`}
+                                                                >
+                                                                    🏛️ {lab.name}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-gray-400 italic">None</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-5 py-4 whitespace-nowrap">
+                                                    <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusColor(userItem.status)}`}>
                                                         {userItem.status}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {userItem.lastLogin ? new Date(userItem.lastLogin).toLocaleDateString() : 'Never'}
-                                                </td>
                                                 {user?.role === 'admin' && (
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                        <div className="inline-flex items-center gap-1.5">
+                                                    <td className="px-5 py-4 whitespace-nowrap text-right">
+                                                        <div className="inline-flex items-center gap-1.5 justify-end">
                                                             <button
                                                                 onClick={() => handleEdit(userItem)}
                                                                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 border border-blue-200 shadow-sm transition"
@@ -1154,7 +1138,7 @@ export default function UserManagement() {
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan={user?.role === 'admin' ? "7" : "6"} className="px-6 py-12 text-center">
+                                            <td colSpan={user?.role === 'admin' ? "8" : "7"} className="px-6 py-12 text-center">
                                                 <div className="text-gray-500">
                                                     <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>

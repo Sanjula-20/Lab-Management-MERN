@@ -20,6 +20,7 @@ export default function EnhancedReportsAnalyticsNew() {
     
     // Sidebar state
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    const [mobileOpen, setMobileOpen] = useState(false)
     
     // Stats for navigation badges
     const [stats, setStats] = useState({
@@ -622,7 +623,7 @@ export default function EnhancedReportsAnalyticsNew() {
                 setSidebarCollapsed={setSidebarCollapsed}
                 currentPath={location.pathname}
                 stats={stats}
-            />
+             mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
 
             {/* Main Content */}
             <div className={`${sidebarCollapsed ? 'ml-16' : 'ml-64'} transition-all duration-300 min-h-screen`}>

@@ -23,6 +23,10 @@ import NewProfile from './pages/NewProfile'
 import Training from './pages/Training'
 import EquipmentCategoryMaster from './pages/EquipmentCategoryMaster'
 import DealerMaster from './pages/DealerMaster'
+import DepartmentMaster from './pages/DepartmentMaster'
+import FacultyMaster from './pages/FacultyMaster'
+import AccessPermissions from './pages/AccessPermissions'
+import HardwareOptionsMaster from './pages/HardwareOptionsMaster'
 import './index.css'
 import Chatbot from './components/Chatbot'
 
@@ -106,6 +110,62 @@ function AppContent() {
           element={
             <ProtectedRoute>
               <DealerMaster />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/departments"
+          element={
+            <ProtectedRoute>
+              <DepartmentMaster />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/department-master"
+          element={
+            <ProtectedRoute>
+              <DepartmentMaster />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/faculty"
+          element={
+            <ProtectedRoute>
+              <FacultyMaster />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/faculty-master"
+          element={
+            <ProtectedRoute>
+              <FacultyMaster />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/hardware-options"
+          element={
+            <ProtectedRoute requiredRole={['master_admin', 'admin']}>
+              <HardwareOptionsMaster />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/access-permissions"
+          element={
+            <ProtectedRoute requiredRole={['master_admin', 'admin']}>
+              <AccessPermissions />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/manage-access"
+          element={
+            <ProtectedRoute requiredRole={['master_admin', 'admin']}>
+              <AccessPermissions />
             </ProtectedRoute>
           }
         />

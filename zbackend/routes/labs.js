@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, checkPermission } = require('../middleware/auth');
 const { trackAccess } = require('./recentlyAccessed');
 const labService = require('../services/labService');
 
@@ -59,7 +59,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST create new lab
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, checkPermission('labs', 'create'), async (req, res) => {
     try {
         const lab = await labService.createLab(req.body, req.user.userId);
         res.status(201).json({
@@ -86,7 +86,7 @@ router.post('/', authenticateToken, async (req, res) => {
 });
 
 // PUT update lab by ID
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, checkPermission('labs', 'edit'), async (req, res) => {
     try {
         const lab = await labService.updateLab(req.params.id, req.body, req.user.userId);
         res.json({
@@ -120,7 +120,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
 });
 
 // PUT assign or update lab in-charge
-router.put('/:id/in-charge', authenticateToken, async (req, res) => {
+router.put('/:id/in-charge', authenticateToken, checkPermission('labs', 'edit'), async (req, res) => {
     try {
         const { in_charge_id } = req.body;
         const lab = await labService.assignInCharge(req.params.id, in_charge_id, req.user.userId);
@@ -170,7 +170,7 @@ router.get('/:id', trackAccess, async (req, res) => {
 });
 
 // DELETE lab by ID (soft delete)
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, checkPermission('labs', 'delete'), async (req, res) => {
     try {
         await labService.deleteLab(req.params.id, req.user.userId);
         res.json({

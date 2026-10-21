@@ -1080,6 +1080,7 @@ router.post('/login', loginEmailValidation, async (req, res) => {
             status: user.status,
             profileImage: user.profileImage,
             department: user.departmentId,
+            roleId: user.roleId,
             authProvider: user.authProvider
         };
 
@@ -1147,6 +1148,7 @@ router.get('/verify', async (req, res) => {
                     name: user.userName,
                     email: user.userMail,
                     role: ROLE_MAP[user.roleId],
+                    roleId: user.roleId,
                     status: user.status,
                     profileImage: user.profileImage,
                     department: user.departmentId

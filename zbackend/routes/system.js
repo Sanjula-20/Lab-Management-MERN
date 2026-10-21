@@ -104,6 +104,41 @@ router.get('/config', authenticateToken, async (req, res) => {
     }
 });
 
+// POST test email configuration
+router.post('/test-email', authenticateToken, async (req, res) => {
+    try {
+        const emailService = require('../services/emailService');
+        const targetEmail = req.body.email || req.user.email || req.user.userMail;
+        if (!targetEmail) {
+            return res.status(400).json({
+                success: false,
+                message: 'Target email address is required'
+            });
+        }
+        const result = await emailService.sendTestEmail(targetEmail);
+        if (result.success) {
+            res.json({
+                success: true,
+                message: `Test email sent successfully to ${targetEmail}`,
+                messageId: result.messageId
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                message: result.message || 'Failed to send test email',
+                error: result.message
+            });
+        }
+    } catch (error) {
+        console.error('Error sending test email:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to test email service',
+            error: error.message
+        });
+    }
+});
+
 // Test endpoint
 router.get('/test', (req, res) => {
     res.json({
@@ -116,6 +151,7 @@ router.get('/test', (req, res) => {
             alerts: 'GET /api/system/alerts',
             databaseStats: 'GET /api/system/database/stats',
             config: 'GET /api/system/config',
+            testEmail: 'POST /api/system/test-email',
             test: 'GET /api/system/test'
         }
     });

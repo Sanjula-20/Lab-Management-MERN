@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, checkPermission } = require('../middleware/auth');
 const departmentService = require('../services/departmentService');
 
 router.use(authenticateToken);
 
 // GET department statistics
-router.get('/stats', async (req, res) => {
+router.get('/stats', checkPermission('departments', 'view'), async (req, res) => {
     try {
         const companyId = req.query.companyId || req.user.companyId || 0;
         const stats = await departmentService.getDepartmentStats(companyId);
@@ -25,7 +25,7 @@ router.get('/stats', async (req, res) => {
 });
 
 // GET all departments
-router.get('/', async (req, res) => {
+router.get('/', checkPermission('departments', 'view'), async (req, res) => {
     try {
         // Add user's companyId to filters if not provided
         const filters = {
@@ -49,7 +49,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET department by ID
-router.get('/:id', async (req, res) => {
+router.get('/:id', checkPermission('departments', 'view'), async (req, res) => {
     try {
         const department = await departmentService.getDepartmentById(req.params.id);
         res.json({
@@ -73,19 +73,8 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST create new department
-router.post('/', async (req, res) => {
+router.post('/', checkPermission('departments', 'create'), async (req, res) => {
     try {
-        // Only admin or teacher can create departments
-        const allowedRoles = ['admin', 'teacher'];
-        const isAllowed = allowedRoles.includes(req.user.role) || req.user.roleId === 6 || req.user.roleId === 3;
-        
-        if (!isAllowed) {
-            return res.status(403).json({
-                success: false,
-                message: 'You do not have permission to create departments'
-            });
-        }
-
         const userId = req.user.userId || req.user.id;
         const departmentData = {
             ...req.body,
@@ -116,19 +105,8 @@ router.post('/', async (req, res) => {
 });
 
 // PUT update department
-router.put('/:id', async (req, res) => {
+router.put('/:id', checkPermission('departments', 'edit'), async (req, res) => {
     try {
-        // Only admin or teacher can update departments
-        const allowedRoles = ['admin', 'teacher'];
-        const isAllowed = allowedRoles.includes(req.user.role) || req.user.roleId === 6 || req.user.roleId === 3;
-        
-        if (!isAllowed) {
-            return res.status(403).json({
-                success: false,
-                message: 'You do not have permission to update departments'
-            });
-        }
-
         const userId = req.user.userId || req.user.id;
         const department = await departmentService.updateDepartment(req.params.id, req.body, userId);
 
@@ -160,17 +138,10 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE department
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', checkPermission('departments', 'delete'), async (req, res) => {
     try {
-        // Only admin can delete departments
-        if (req.user.role !== 'admin' && req.user.roleId !== 6) {
-            return res.status(403).json({
-                success: false,
-                message: 'You do not have permission to delete departments'
-            });
-        }
-
-        const result = await departmentService.deleteDepartment(req.params.id);
+        const userId = req.user.userId || req.user.id;
+        const result = await departmentService.deleteDepartment(req.params.id, userId);
         res.json({
             success: true,
             message: result.message

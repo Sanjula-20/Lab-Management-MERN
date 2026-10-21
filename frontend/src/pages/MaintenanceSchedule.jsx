@@ -47,6 +47,7 @@ export default function MaintenanceSchedule() {
     const [showUserMenu, setShowUserMenu] = useState(false)
     const [showNotifications, setShowNotifications] = useState(false)
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    const [mobileOpen, setMobileOpen] = useState(false)
     const [currentTime, setCurrentTime] = useState(new Date())
 
     const { user, isAuthenticated, logout } = useAuth()
@@ -358,7 +359,7 @@ export default function MaintenanceSchedule() {
                 setSidebarCollapsed={setSidebarCollapsed}
                 currentPath={location.pathname}
                 stats={navStats}
-            />
+             mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
 
             {/* Main Content */}
             <div className={`${sidebarCollapsed ? 'ml-16' : 'ml-64'} transition-all duration-300 min-h-screen`}>

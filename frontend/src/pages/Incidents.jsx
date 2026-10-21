@@ -1,3 +1,4 @@
+import { Sidebar, AppHeader } from '../components/common/Navigation'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
@@ -5,7 +6,6 @@ import SmartSearchBar from '../components/common/SmartSearchBar'
 import Pagination from '../components/common/Pagination'
 
 export default function Incidents() {
-    // ✅ FIXED: Ensure all arrays are properly initialized
     const [incidents, setIncidents] = useState([])
     const [filteredIncidents, setFilteredIncidents] = useState([])
     const [equipment, setEquipment] = useState([])
@@ -17,9 +17,27 @@ export default function Incidents() {
     const [searchTerm, setSearchTerm] = useState('')
     const [selectedStatuses, setSelectedStatuses] = useState([])
     const [selectedPriorities, setSelectedPriorities] = useState([])
+    const [selectedCategories, setSelectedCategories] = useState([])
+
+    // Dedicated Resolve Modal State
+    const [showResolveModal, setShowResolveModal] = useState(false)
+    const [resolvingIncident, setResolvingIncident] = useState(null)
+    const [resolutionNotes, setResolutionNotes] = useState('')
+    const [resolvingLoading, setResolvingLoading] = useState(false)
+
+    // Dedicated Details & Audit Timeline Modal State
+    const [showDetailModal, setShowDetailModal] = useState(false)
+    const [detailIncident, setDetailIncident] = useState(null)
+    const [incidentAuditHistory, setIncidentAuditHistory] = useState([])
+    const [loadingHistory, setLoadingHistory] = useState(false)
+
+    // Delete Confirmation Modal State
+    const [deleteConfirmId, setDeleteConfirmId] = useState(null)
+    const [deletingLoading, setDeletingLoading] = useState(false)
 
     // Sidebar and UI state
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    const [mobileOpen, setMobileOpen] = useState(false)
     const [showUserMenu, setShowUserMenu] = useState(false)
     const [showNotifications, setShowNotifications] = useState(false)
     const [unreadCount, setUnreadCount] = useState(0)
@@ -239,38 +257,51 @@ export default function Incidents() {
                 { id: 'high', label: 'High', color: 'bg-orange-100 text-orange-800' },
                 { id: 'critical', label: 'Critical', color: 'bg-red-100 text-red-800' }
             ]
+        },
+        {
+            id: 'category',
+            label: 'Incident Category',
+            options: [
+                { id: 'malfunction', label: 'Malfunction', color: 'bg-purple-100 text-purple-800' },
+                { id: 'damage', label: 'Damage', color: 'bg-rose-100 text-rose-800' },
+                { id: 'safety', label: 'Safety Hazard', color: 'bg-amber-100 text-amber-800' },
+                { id: 'maintenance', label: 'Maintenance Needed', color: 'bg-cyan-100 text-cyan-800' },
+                { id: 'other', label: 'Other', color: 'bg-gray-100 text-gray-800' }
+            ]
         }
     ], [])
 
-    // Escape key handler to go back to previous state
+    // Escape key handler - closes open overlays consistently without unintended navigation
     useEffect(() => {
         const handleKeyDown = (event) => {
             if (event.key === 'Escape' || event.key === 'Esc') {
-                if (showModal) {
+                if (showResolveModal) {
+                    setShowResolveModal(false)
+                    setResolvingIncident(null)
+                    setResolutionNotes('')
+                } else if (showDetailModal) {
+                    setShowDetailModal(false)
+                    setDetailIncident(null)
+                    setIncidentAuditHistory([])
+                } else if (deleteConfirmId) {
+                    setDeleteConfirmId(null)
+                } else if (showModal) {
                     setShowModal(false)
                     setEditingIncident(null)
                 } else if (showUserMenu) {
                     setShowUserMenu(false)
                 } else if (showNotifications) {
                     setShowNotifications(false)
-                } else if (searchTerm) {
-                    setSearchTerm('')
-                } else if (selectedStatuses.length > 0 || selectedPriorities.length > 0) {
-                    setSelectedStatuses([])
-                    setSelectedPriorities([])
-                } else {
-                    navigate(-1)
                 }
             }
         }
 
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [showModal, showUserMenu, showNotifications, searchTerm, selectedStatuses, selectedPriorities, navigate])
+    }, [showModal, showResolveModal, showDetailModal, deleteConfirmId, showUserMenu, showNotifications])
 
     // Fetch all data
     useEffect(() => {
-        // Set document title
         document.title = 'Incidents | NEC LabMS'
         
         if (!isAuthenticated) {
@@ -298,13 +329,19 @@ export default function Incidents() {
                 (incident.title?.toLowerCase() || '').includes(q) ||
                 (incident.description?.toLowerCase() || '').includes(q) ||
                 (incident.location?.toLowerCase() || '').includes(q) ||
-                (incident.category?.toLowerCase() || '').includes(q)
+                (incident.category?.toLowerCase() || '').includes(q) ||
+                (incident.relatedEquipment?.name?.toLowerCase() || '').includes(q) ||
+                (incident.relatedEquipment?.serial_number?.toLowerCase() || '').includes(q) ||
+                (incident.incidentReporter?.name?.toLowerCase() || '').includes(q) ||
+                (incident.incidentAssignee?.name?.toLowerCase() || '').includes(q)
+
             const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(incident.status)
             const matchesPriority = selectedPriorities.length === 0 || selectedPriorities.includes(incident.priority)
-            return matchesSearch && matchesStatus && matchesPriority
+            const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(incident.category)
+            return matchesSearch && matchesStatus && matchesPriority && matchesCategory
         })
         setFilteredIncidents(filtered)
-    }, [incidents, searchTerm, selectedStatuses, selectedPriorities])
+    }, [incidents, searchTerm, selectedStatuses, selectedPriorities, selectedCategories])
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1)
@@ -519,6 +556,15 @@ export default function Incidents() {
         }
     }
 
+    const handleEquipmentChange = (equipmentId) => {
+        const found = Array.isArray(equipment) ? equipment.find(eq => String(eq.id) === String(equipmentId)) : null
+        setFormData(prev => ({
+            ...prev,
+            equipment_id: equipmentId,
+            location: found?.lab?.name ? (found.lab.location ? `${found.lab.name} (${found.lab.location})` : found.lab.name) : prev.location
+        }))
+    }
+
     const handleEdit = (incident) => {
         if (!incident) return
         
@@ -536,11 +582,88 @@ export default function Incidents() {
         setShowModal(true)
     }
 
-    const handleDelete = async (id) => {
-        if (!id || !window.confirm('Are you sure you want to delete this incident?')) return
+    // Open Dedicated Resolve Modal
+    const handleOpenResolveModal = (incident) => {
+        setResolvingIncident(incident)
+        setResolutionNotes('')
+        setShowResolveModal(true)
+    }
+
+    // Submit Resolution with resolution notes and authenticated user
+    const handleResolveSubmit = async (e) => {
+        e.preventDefault()
+        if (!resolvingIncident || !resolutionNotes.trim()) return
 
         try {
-            const response = await fetch(`${API_BASE_URL}/incidents/${id}`, {
+            setResolvingLoading(true)
+            setError('')
+            const response = await fetch(`${API_BASE_URL}/incidents/${resolvingIncident.id}/resolve`, {
+                method: 'PATCH',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    resolution_notes: resolutionNotes.trim()
+                })
+            })
+
+            if (response.ok) {
+                setShowResolveModal(false)
+                setResolvingIncident(null)
+                setResolutionNotes('')
+                await fetchIncidents()
+            } else {
+                const result = await response.json()
+                setError(result.message || 'Failed to resolve incident')
+            }
+        } catch (err) {
+            console.error('Error resolving incident:', err)
+            setError('Failed to resolve incident')
+        } finally {
+            setResolvingLoading(false)
+        }
+    }
+
+    // Open Detail & Audit History Modal
+    const handleOpenDetailModal = (incident) => {
+        setDetailIncident(incident)
+        setShowDetailModal(true)
+        fetchIncidentHistory(incident.id)
+    }
+
+    // Fetch Audit History from backend
+    const fetchIncidentHistory = async (incidentId) => {
+        try {
+            setLoadingHistory(true)
+            const response = await fetch(`${API_BASE_URL}/audit/incident/${incidentId}`, {
+                credentials: 'include'
+            })
+            if (response.ok) {
+                const result = await response.json()
+                setIncidentAuditHistory(result.data || [])
+            } else {
+                setIncidentAuditHistory([])
+            }
+        } catch (err) {
+            console.error('Error loading incident history:', err)
+            setIncidentAuditHistory([])
+        } finally {
+            setLoadingHistory(false)
+        }
+    }
+
+    // Confirmation-based Delete
+    const handleDeleteClick = (id) => {
+        setDeleteConfirmId(id)
+    }
+
+    const handleDeleteConfirmed = async () => {
+        if (!deleteConfirmId) return
+
+        try {
+            setDeletingLoading(true)
+            const response = await fetch(`${API_BASE_URL}/incidents/${deleteConfirmId}`, {
                 method: 'DELETE',
                 credentials: 'include',
                 headers: {
@@ -549,18 +672,30 @@ export default function Incidents() {
             })
 
             if (response.ok) {
+                setDeleteConfirmId(null)
                 await fetchIncidents()
             } else {
-                setError('Failed to delete incident')
+                const res = await response.json()
+                setError(res.message || 'Failed to delete incident')
             }
         } catch (error) {
             console.error('Error deleting incident:', error)
             setError('Failed to delete incident')
+        } finally {
+            setDeletingLoading(false)
         }
     }
 
     const updateStatus = async (id, newStatus) => {
         if (!id || !newStatus) return
+
+        if (newStatus === 'resolved') {
+            const inc = Array.isArray(incidents) ? incidents.find(i => i.id === id) : null
+            if (inc) {
+                handleOpenResolveModal(inc)
+                return
+            }
+        }
 
         try {
             const response = await fetch(`${API_BASE_URL}/incidents/${id}/status`, {
@@ -619,219 +754,25 @@ export default function Incidents() {
 
     return (
         <div className="min-h-screen w-full bg-gray-50 flex">
-            {/* Sidebar */}
-            <div className={`fixed inset-y-0 left-0 z-50 ${sidebarCollapsed ? 'w-16' : 'w-64'} bg-white shadow-lg border-r border-gray-200 transition-all duration-300`}>
-                {/* Sidebar Header */}
-                <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-purple-600">
-                    {!sidebarCollapsed && (
-                        <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-white rounded-lg overflow-hidden p-1">
-                                <img 
-                                    src="/nec-logo.png" 
-                                    alt="NEC Logo" 
-                                    className="w-full h-full object-contain"
-                                />
-                            </div>
-                            <h1 className="text-xl font-bold text-white">
-                                NEC LabMS
-                            </h1>
-                        </div>
-                    )}
-                    <button
-                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        className="p-2 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors text-white"
-                    >
-                        <svg className={`w-5 h-5 transition-transform ${sidebarCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path>
-                        </svg>
-                    </button>
-                </div>
-
-                {/* Navigation Items */}
-                <nav className="mt-6 px-3">
-                    <div className="space-y-1">
-                        {navigationItems.filter(item => item.show).map((item) => {
-                            const isActive = location.pathname === item.path
-                            return (
-                                <button
-                                    key={item.id}
-                                    onClick={() => handleNavigation(item.path)}
-                                    className={`w-full flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${isActive
-                                        ? 'bg-red-50 text-red-700 border-r-4 border-red-700'
-                                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                                        }`}
-                                    title={sidebarCollapsed ? item.title : ''}
-                                >
-                                    <div className="flex items-center justify-center w-5 h-5">
-                                        {item.icon}
-                                    </div>
-                                    {!sidebarCollapsed && (
-                                        <>
-                                            <span className="ml-3 flex-1 text-left">{item.title}</span>
-                                            {item.badge && (
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.badgeColor || 'bg-blue-100 text-blue-800'
-                                                    }`}>
-                                                    {item.badge}
-                                                </span>
-                                            )}
-                                        </>
-                                    )}
-                                    {sidebarCollapsed && item.badge && (
-                                        <span className={`absolute left-8 top-2 w-2 h-2 rounded-full ${item.badgeColor || 'bg-blue-500'
-                                            }`}></span>
-                                    )}
-                                </button>
-                            )
-                        })}
-                    </div>
-                </nav>
-
-                {/* Sidebar Footer */}
-                {!sidebarCollapsed && (
-                    <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                                <span className="text-white font-medium text-sm">
-                                    {(user?.name || user?.email)?.charAt(0)?.toUpperCase()}
-                                </span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">
-                                    {user?.name || user?.email}
-                                </p>
-                                <p className="text-xs text-gray-500 capitalize">
-                                    {user?.role}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
+            {/* Shared Sidebar Component */}
+            <Sidebar 
+                sidebarCollapsed={sidebarCollapsed}
+                setSidebarCollapsed={setSidebarCollapsed}
+                currentPath="/incidents"
+                mobileOpen={mobileOpen}
+                setMobileOpen={setMobileOpen}
+            />
 
             {/* Main Content */}
-            <div className={`flex-1 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
-                {/* Top Header */}
-                <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
-                    <div className="px-6 py-4">
-                        <div className="flex items-center justify-between">
-                            {/* Page Title and Breadcrumb */}
-                            <div className="flex items-center space-x-4">
-                                <div>
-                                    <h1 className="text-2xl font-bold text-gray-900">Incident Management</h1>
-                                    <p className="text-sm text-gray-600">Track and resolve lab incidents</p>
-                                </div>
-                            </div>
-
-                            {/* Search Bar */}
-                            <form onSubmit={handleSearch} className="flex-1 max-w-lg mx-8">
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        placeholder="Search anything..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-2 bg-gray-100 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white transition-all"
-                                    />
-                                    <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                                    </svg>
-                                </div>
-                            </form>
-
-                            {/* Header Right Section */}
-                            <div className="flex items-center space-x-4">
-                                {/* Report Incident Button */}
-                                <button
-                                    onClick={() => setShowModal(true)}
-                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2"
-                                >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.982 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-                                    </svg>
-                                    <span>Report Incident</span>
-                                </button>
-
-                                {/* Settings Icon - Admin Only */}
-                                {user?.role === 'admin' && (
-                                    <button
-                                        onClick={() => handleNavigation('/settings')}
-                                        className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                                        title="Settings"
-                                    >
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                        </svg>
-                                    </button>
-                                )}
-
-                                {/* Notifications */}
-                                <div className="relative" ref={notificationRef}>
-                                    <button
-                                        onClick={() => setShowNotifications(!showNotifications)}
-                                        className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                                        title="Notifications"
-                                    >
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
-                                        </svg>
-                                        {unreadCount > 0 && (
-                                            <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center text-xs text-white font-bold">
-                                                {unreadCount}
-                                            </span>
-                                        )}
-                                    </button>
-                                </div>
-
-                                {/* User Menu */}
-                                <div className="relative" ref={userMenuRef}>
-                                    <button
-                                        onClick={() => setShowUserMenu(!showUserMenu)}
-                                        className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                                    >
-                                        <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                                            <span className="text-white font-medium text-sm">
-                                                {(user?.name || user?.email)?.charAt(0)?.toUpperCase()}
-                                            </span>
-                                        </div>
-                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-                                        </svg>
-                                    </button>
-
-                                    {/* User Dropdown */}
-                                    {showUserMenu && (
-                                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
-                                            <div className="px-4 py-2 border-b border-gray-100">
-                                                <p className="text-sm font-medium text-gray-900">{user?.name || user?.email}</p>
-                                                <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
-                                            </div>
-                                            <button
-                                                onClick={() => handleNavigation('/profile')}
-                                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                                                </svg>
-                                                <span>Profile</span>
-                                            </button>
-                                            <div className="border-t border-gray-100 my-1"></div>
-                                            <button
-                                                onClick={handleLogout}
-                                                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-                                                </svg>
-                                                <span>Logout</span>
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </header>
+            <div className={`flex-1 min-w-0 transition-all duration-300 overflow-x-hidden ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'}`}>
+                {/* Shared Header Component */}
+                <AppHeader 
+                    searchQuery={typeof searchQuery !== 'undefined' ? searchQuery : ''}
+                    setSearchQuery={typeof setSearchQuery !== 'undefined' ? setSearchQuery : null}
+                    showUserMenu={typeof showUserMenu !== 'undefined' ? showUserMenu : false}
+                    setShowUserMenu={typeof setShowUserMenu !== 'undefined' ? setShowUserMenu : null}
+                    onToggleMobileMenu={() => setMobileOpen(!mobileOpen)}
+                />
 
                 {/* Page Content */}
                 <main className="p-6">
@@ -929,31 +870,37 @@ export default function Incidents() {
                                 <SmartSearchBar
                                     searchValue={searchTerm}
                                     onSearchChange={(val) => setSearchTerm(val)}
-                                    placeholder="Search incidents by title, description, location..."
+                                    placeholder="Search incidents by title, description, location, equipment..."
                                     groups={incidentSearchGroups}
                                     selectedOptions={{
                                         status: selectedStatuses,
-                                        priority: selectedPriorities
+                                        priority: selectedPriorities,
+                                        category: selectedCategories
                                     }}
                                     onOptionToggle={(groupId, optId) => {
                                         if (groupId === 'status') {
                                             setSelectedStatuses(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
                                         } else if (groupId === 'priority') {
                                             setSelectedPriorities(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
+                                        } else if (groupId === 'category') {
+                                            setSelectedCategories(prev => prev.includes(optId) ? prev.filter(x => x !== optId) : [...prev, optId])
                                         }
                                     }}
                                     onGroupSelectAll={(groupId, allIds) => {
                                         if (groupId === 'status') setSelectedStatuses(allIds)
                                         else if (groupId === 'priority') setSelectedPriorities(allIds)
+                                        else if (groupId === 'category') setSelectedCategories(allIds)
                                     }}
                                     onGroupClear={(groupId) => {
                                         if (groupId === 'status') setSelectedStatuses([])
                                         else if (groupId === 'priority') setSelectedPriorities([])
+                                        else if (groupId === 'category') setSelectedCategories([])
                                     }}
                                     onClearAll={() => {
                                         setSearchTerm('')
                                         setSelectedStatuses([])
                                         setSelectedPriorities([])
+                                        setSelectedCategories([])
                                     }}
                                 />
                             </div>
@@ -961,9 +908,52 @@ export default function Incidents() {
                                 Showing <span className="text-red-600 font-bold">{Array.isArray(filteredIncidents) ? filteredIncidents.length : 0}</span> of <span className="font-bold text-gray-900">{Array.isArray(incidents) ? incidents.length : 0}</span> incidents
                             </div>
                         </div>
+
+                        {/* Active Filter Chips Bar */}
+                        {(selectedStatuses.length > 0 || selectedPriorities.length > 0 || selectedCategories.length > 0 || searchTerm) && (
+                            <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-gray-100">
+                                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Active Filters:</span>
+                                {searchTerm && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                                        Search: "{searchTerm}"
+                                        <button type="button" onClick={() => setSearchTerm('')} className="hover:text-red-900 font-bold ml-1">&times;</button>
+                                    </span>
+                                )}
+                                {selectedStatuses.map(s => (
+                                    <span key={s} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                        Status: {s.replace('_', ' ')}
+                                        <button type="button" onClick={() => setSelectedStatuses(prev => prev.filter(x => x !== s))} className="hover:text-blue-900 font-bold ml-1">&times;</button>
+                                    </span>
+                                ))}
+                                {selectedPriorities.map(p => (
+                                    <span key={p} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                                        Priority: {p}
+                                        <button type="button" onClick={() => setSelectedPriorities(prev => prev.filter(x => x !== p))} className="hover:text-amber-900 font-bold ml-1">&times;</button>
+                                    </span>
+                                ))}
+                                {selectedCategories.map(c => (
+                                    <span key={c} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
+                                        Category: {c}
+                                        <button type="button" onClick={() => setSelectedCategories(prev => prev.filter(x => x !== c))} className="hover:text-purple-900 font-bold ml-1">&times;</button>
+                                    </span>
+                                ))}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSearchTerm('')
+                                        setSelectedStatuses([])
+                                        setSelectedPriorities([])
+                                        setSelectedCategories([])
+                                    }}
+                                    className="text-xs font-semibold text-red-600 hover:text-red-800 ml-2 underline"
+                                >
+                                    Clear All
+                                </button>
+                            </div>
+                        )}
                     </div>
 
-                    {/* ✅ FIXED: Incidents Table with safe array access */}
+                    {/* Incidents Table */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="min-w-full divide-y divide-gray-200">
@@ -973,7 +963,7 @@ export default function Incidents() {
                                             Incident
                                         </th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                            Equipment
+                                            Equipment / Machine
                                         </th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             Priority
@@ -996,38 +986,51 @@ export default function Incidents() {
                                     {Array.isArray(paginatedIncidents) && paginatedIncidents.map((incident) => {
                                         if (!incident) return null
 
-                                        // ✅ FIXED: Safe array access with fallback
                                         const equipmentItem = Array.isArray(equipment) 
                                             ? equipment.find(eq => eq?.id === incident?.equipment_id) 
                                             : null
                                             
                                         const assignedUser = Array.isArray(users) 
-                                            ? users.find(u => u?.id === incident?.assigned_to) 
+                                            ? users.find(u => (u?.id || u?.userId) === incident?.assigned_to) 
                                             : null
 
-                                        // ✅ FIXED: Use incidentReporter if available from backend associations
                                         const reporterName = incident?.incidentReporter?.name || 
-                                                           incident?.reporter?.name || 
+                                                           incident?.incidentReporter?.userName || 
                                                            'Unknown Reporter'
 
+                                        const eqDisplay = incident?.relatedEquipment || equipmentItem
+
                                         return (
-                                            <tr key={incident?.id || Math.random()} className="hover:bg-gray-50">
+                                            <tr key={incident?.id || Math.random()} className="hover:bg-gray-50 transition-colors">
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div>
-                                                        <div className="text-sm font-medium text-gray-900">
-                                                            {incident?.title || 'No Title'}
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-bold text-gray-400">#INC-{incident?.id}</span>
+                                                            <span className="text-sm font-semibold text-gray-900">
+                                                                {incident?.title || 'No Title'}
+                                                            </span>
                                                         </div>
-                                                        <div className="text-sm text-gray-500 truncate max-w-xs">
+                                                        <div className="text-sm text-gray-500 truncate max-w-xs mt-0.5">
                                                             {incident?.description || 'No Description'}
                                                         </div>
                                                         <div className="text-xs text-gray-400 mt-1">
-                                                            {incident?.category?.replace('_', ' ') || 'No Category'} • By: {reporterName}
+                                                            <span className="capitalize">{incident?.category?.replace('_', ' ') || 'No Category'}</span>
+                                                            {' • '}By: {reporterName}
                                                         </div>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {/* ✅ FIXED: Use relatedEquipment from backend associations */}
-                                                    {incident?.relatedEquipment?.name || equipmentItem?.name || 'N/A'}
+                                                    {eqDisplay ? (
+                                                        <div>
+                                                            <div className="font-medium text-gray-900">{eqDisplay.name}</div>
+                                                            <div className="text-xs text-gray-500">Asset: {eqDisplay.serial_number || 'N/A'}</div>
+                                                            {eqDisplay.lab?.name && (
+                                                                <div className="text-xs text-indigo-600 font-medium">{eqDisplay.lab.name}</div>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-gray-400 italic">No Machine Attached</span>
+                                                    )}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPriorityColor(incident?.priority)}`}>
@@ -1054,17 +1057,44 @@ export default function Incidents() {
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                    {/* ✅ FIXED: Use incidentAssignee from backend associations */}
-                                                    {incident?.incidentAssignee?.name || assignedUser?.name || 'Unassigned'}
+                                                    {incident?.incidentAssignee?.name || incident?.incidentAssignee?.userName || assignedUser?.name || 'Unassigned'}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                                     {incident?.created_at ? new Date(incident.created_at).toLocaleDateString() : 'Unknown'}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                    <div className="flex items-center justify-end gap-2">
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        {/* View Details & Audit Timeline */}
+                                                        <button
+                                                            onClick={() => handleOpenDetailModal(incident)}
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors"
+                                                            title="View Details & History"
+                                                        >
+                                                            <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                                            </svg>
+                                                            <span>Details</span>
+                                                        </button>
+
+                                                        {/* Resolve Button (if not yet resolved) */}
+                                                        {incident.status !== 'resolved' && incident.status !== 'closed' && (
+                                                            <button
+                                                                onClick={() => handleOpenResolveModal(incident)}
+                                                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors"
+                                                                title="Resolve Incident"
+                                                            >
+                                                                <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                                                                </svg>
+                                                                <span>Resolve</span>
+                                                            </button>
+                                                        )}
+
+                                                        {/* Edit Button */}
                                                         <button
                                                             onClick={() => handleEdit(incident)}
-                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 border border-indigo-200 shadow-sm transition-all duration-150 hover:shadow"
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors"
                                                             title="Edit incident"
                                                         >
                                                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1072,10 +1102,12 @@ export default function Incidents() {
                                                             </svg>
                                                             <span>Edit</span>
                                                         </button>
-                                                        {(user?.role === 'admin' || incident?.reported_by === user?.id) && (
+
+                                                        {/* Delete Button */}
+                                                        {(user?.role === 'admin' || incident?.reported_by === (user?.id || user?.userId)) && (
                                                             <button
-                                                                onClick={() => handleDelete(incident?.id)}
-                                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 active:bg-red-200 border border-red-200 shadow-sm transition-all duration-150 hover:shadow"
+                                                                onClick={() => handleDeleteClick(incident?.id)}
+                                                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors"
                                                                 title="Delete incident"
                                                             >
                                                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1092,7 +1124,7 @@ export default function Incidents() {
                                 </tbody>
                             </table>
 
-                            {/* ✅ FIXED: Safe check for empty results */}
+                            {/* Empty state */}
                             {(!Array.isArray(filteredIncidents) || filteredIncidents.length === 0) && (
                                 <div className="text-center py-12">
                                     <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1124,149 +1156,467 @@ export default function Incidents() {
                 </main>
             </div>
 
-            {/* ✅ FIXED: Modal with safe array access */}
+            {/* MODAL 1: Report / Edit Incident Modal */}
             {showModal && (
-                <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-                    <div className="relative top-20 mx-auto p-5 border w-11/12 max-w-md shadow-lg rounded-md bg-white">
-                        <div className="mt-3">
-                            <h3 className="text-lg font-medium text-gray-900 text-center mb-4">
-                                {editingIncident ? 'Edit Incident' : 'Report New Incident'}
+                <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden max-h-[90vh] flex flex-col">
+                        <div className="px-6 py-4 bg-gradient-to-r from-red-600 to-rose-700 text-white flex items-center justify-between">
+                            <h3 className="text-lg font-bold">
+                                {editingIncident ? `Edit Incident #INC-${editingIncident.id}` : 'Report New Incident'}
                             </h3>
-                            <form onSubmit={handleSubmit} className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Title*</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        value={formData.title}
-                                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
-                                        placeholder="Brief description of the incident"
-                                    />
-                                </div>
+                            <button
+                                onClick={() => {
+                                    setShowModal(false)
+                                    setEditingIncident(null)
+                                }}
+                                className="text-white hover:text-red-200 text-xl font-bold p-1"
+                            >
+                                &times;
+                            </button>
+                        </div>
+                        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                                    Incident Title*
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={formData.title}
+                                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                    className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500"
+                                    placeholder="Brief summary of the issue (e.g., Optical Microscope LED Failed)"
+                                />
+                            </div>
 
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">Description*</label>
-                                    <textarea
-                                        required
-                                        rows={3}
-                                        value={formData.description}
-                                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
-                                        placeholder="Detailed description of what happened"
-                                    />
-                                </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                                    Description*
+                                </label>
+                                <textarea
+                                    required
+                                    rows={3}
+                                    value={formData.description}
+                                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                    className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500"
+                                    placeholder="Detailed description of what occurred, symptoms, error codes..."
+                                />
+                            </div>
 
-                                {/* ✅ FIXED: Equipment dropdown with safe array access */}
+                            {/* Equipment Selection with Machine Details preview */}
+                            <div>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                                        Related Machine / Equipment {formData.category === 'malfunction' && <span className="text-red-600">*</span>}
+                                    </label>
+                                    <span className="text-xs text-gray-400">Select registered equipment</span>
+                                </div>
+                                <select
+                                    value={formData.equipment_id}
+                                    onChange={(e) => handleEquipmentChange(e.target.value)}
+                                    className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
+                                >
+                                    <option value="">-- Select Equipment (Optional for non-machine incidents) --</option>
+                                    {Array.isArray(equipment) && equipment.map(item => (
+                                        <option key={item?.id || Math.random()} value={item?.id || ''}>
+                                            {item?.name} {item?.serial_number ? `[Asset: ${item.serial_number}]` : ''} {item?.lab?.name ? `(${item.lab.name})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                {/* Auto-populated Machine Details Preview Card */}
+                                {formData.equipment_id && (() => {
+                                    const selectedEq = Array.isArray(equipment) ? equipment.find(eq => String(eq.id) === String(formData.equipment_id)) : null
+                                    if (!selectedEq) return null
+                                    return (
+                                        <div className="mt-2.5 p-3.5 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-1">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-semibold text-gray-900">{selectedEq.name}</span>
+                                                <span className="text-gray-500 font-mono">Asset #{selectedEq.serial_number || 'N/A'}</span>
+                                            </div>
+                                            <div className="text-gray-600">
+                                                Brand/Model: <span className="font-medium text-gray-800">{selectedEq.brand || 'N/A'} {selectedEq.model_name || ''}</span>
+                                                {' • '}Category: <span className="font-medium text-gray-800">{selectedEq.category || 'N/A'}</span>
+                                            </div>
+                                            {selectedEq.lab && (
+                                                <div className="text-indigo-600 font-medium">
+                                                    Lab: {selectedEq.lab.name} {selectedEq.lab.location ? `(${selectedEq.lab.location})` : ''}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )
+                                })()}
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Equipment</label>
+                                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                                        Priority*
+                                    </label>
                                     <select
-                                        value={formData.equipment_id}
-                                        onChange={(e) => setFormData({ ...formData, equipment_id: e.target.value })}
-                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                                        value={formData.priority}
+                                        onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                                        className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
                                     >
-                                        <option value="">Select Equipment (Optional)</option>
-                                        {Array.isArray(equipment) && equipment.map(item => (
-                                            <option key={item?.id || Math.random()} value={item?.id || ''}>
-                                                {item?.name || 'Unknown Equipment'}
+                                        {priorities.map(priority => (
+                                            <option key={priority} value={priority}>
+                                                {priority.charAt(0).toUpperCase() + priority.slice(1)}
                                             </option>
                                         ))}
                                     </select>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700">Priority*</label>
-                                        <select
-                                            value={formData.priority}
-                                            onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
-                                        >
-                                            {priorities.map(priority => (
-                                                <option key={priority} value={priority}>
-                                                    {priority.charAt(0).toUpperCase() + priority.slice(1)}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700">Category*</label>
-                                        <select
-                                            value={formData.category}
-                                            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
-                                        >
-                                            {categories.map(category => (
-                                                <option key={category} value={category}>
-                                                    {category.charAt(0).toUpperCase() + category.slice(1)}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700">Location</label>
-                                    <input
-                                        type="text"
-                                        value={formData.location}
-                                        onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
-                                        placeholder="Where did this incident occur?"
-                                    />
+                                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                                        Category*
+                                    </label>
+                                    <select
+                                        value={formData.category}
+                                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                        className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
+                                    >
+                                        {categories.map(category => (
+                                            <option key={category} value={category}>
+                                                {category.charAt(0).toUpperCase() + category.slice(1)}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
+                            </div>
 
-                                {/* ✅ FIXED: Users dropdown with safe array access */}
-                                {['admin', 'lab_assistant', 'teacher'].includes(user?.role) && (
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700">Assign To</label>
-                                        <select
-                                            value={formData.assigned_to}
-                                            onChange={(e) => setFormData({ ...formData, assigned_to: e.target.value })}
-                                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
-                                        >
-                                            <option value="">Unassigned</option>
-                                            {Array.isArray(users) && users
-                                                .filter(u => ['admin', 'lab_assistant', 'teacher'].includes(u?.role))
-                                                .map(userItem => (
-                                                    <option key={userItem?.id || Math.random()} value={userItem?.id || ''}>
-                                                        {userItem?.name || userItem?.email || 'Unknown User'}
-                                                    </option>
-                                                ))}
-                                        </select>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                                    Incident Location
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.location}
+                                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                                    className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500"
+                                    placeholder="Room / Lab / Specific location"
+                                />
+                            </div>
+
+                            {/* Assignee Selection */}
+                            {['admin', 'lab_assistant', 'teacher'].includes(user?.role) && (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                                        Assign Technician / Staff
+                                    </label>
+                                    <select
+                                        value={formData.assigned_to}
+                                        onChange={(e) => setFormData({ ...formData, assigned_to: e.target.value })}
+                                        className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
+                                    >
+                                        <option value="">Unassigned</option>
+                                        {Array.isArray(users) && users
+                                            .filter(u => ['admin', 'lab_assistant', 'teacher', 'faculty', 'lab_technician'].includes(u?.role))
+                                            .map(userItem => (
+                                                <option key={userItem?.id || userItem?.userId || Math.random()} value={userItem?.id || userItem?.userId || ''}>
+                                                    {userItem?.name || userItem?.userName || userItem?.email} ({userItem?.role})
+                                                </option>
+                                            ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowModal(false)
+                                        setEditingIncident(null)
+                                    }}
+                                    className="px-4 py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-5 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-md transition-colors"
+                                >
+                                    {editingIncident ? 'Update Incident' : 'Report Incident'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL 2: Dedicated Resolve Incident Modal */}
+            {showResolveModal && resolvingIncident && (
+                <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+                        <div className="px-6 py-4 bg-gradient-to-r from-emerald-600 to-teal-700 text-white flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-bold">Resolve Incident #INC-{resolvingIncident.id}</h3>
+                                <p className="text-xs text-emerald-100 mt-0.5">{resolvingIncident.title}</p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setShowResolveModal(false)
+                                    setResolvingIncident(null)
+                                    setResolutionNotes('')
+                                }}
+                                className="text-white hover:text-emerald-200 text-xl font-bold p-1"
+                            >
+                                &times;
+                            </button>
+                        </div>
+                        <form onSubmit={handleResolveSubmit} className="p-6 space-y-4">
+                            {/* Authenticated Resolver Indicator */}
+                            <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm">
+                                    {(user?.name || user?.userName || 'U').charAt(0).toUpperCase()}
+                                </div>
+                                <div className="text-xs">
+                                    <div className="font-semibold text-emerald-900">
+                                        Resolving as: {user?.name || user?.userName || user?.email}
+                                    </div>
+                                    <div className="text-emerald-700 capitalize">Role: {user?.role || 'Staff'}</div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                                    Resolution Notes / Remedial Actions*
+                                </label>
+                                <textarea
+                                    required
+                                    rows={4}
+                                    value={resolutionNotes}
+                                    onChange={(e) => setResolutionNotes(e.target.value)}
+                                    className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                    placeholder="Explain how the incident was diagnosed, resolved, components replaced, or tested..."
+                                />
+                                <p className="text-xs text-gray-400 mt-1">Resolution notes will be recorded in the permanent audit trail.</p>
+                            </div>
+
+                            <div className="flex justify-end space-x-3 pt-3 border-t border-gray-100">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowResolveModal(false)
+                                        setResolvingIncident(null)
+                                        setResolutionNotes('')
+                                    }}
+                                    className="px-4 py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+                                    disabled={resolvingLoading}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={resolvingLoading || !resolutionNotes.trim()}
+                                    className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl shadow-md transition-colors flex items-center gap-2"
+                                >
+                                    {resolvingLoading && (
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    )}
+                                    <span>Confirm Resolution</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL 3: Dedicated Incident Details & Audit Timeline Modal */}
+            {showDetailModal && detailIncident && (
+                <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden max-h-[90vh] flex flex-col">
+                        <div className="px-6 py-4 bg-gray-900 text-white flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-white text-gray-900">
+                                    #INC-{detailIncident.id}
+                                </span>
+                                <h3 className="text-base font-bold text-white truncate max-w-md">
+                                    {detailIncident.title}
+                                </h3>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setShowDetailModal(false)
+                                    setDetailIncident(null)
+                                    setIncidentAuditHistory([])
+                                }}
+                                className="text-gray-400 hover:text-white text-xl font-bold p-1"
+                            >
+                                &times;
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-y-auto space-y-5">
+                            {/* Status & Priority header */}
+                            <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-gray-500 uppercase">Status:</span>
+                                    <span className={`inline-flex px-2.5 py-1 text-xs font-bold rounded-full ${getStatusColor(detailIncident.status)}`}>
+                                        {(detailIncident.status || 'open').replace('_', ' ')}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-gray-500 uppercase">Priority:</span>
+                                    <span className={`inline-flex px-2.5 py-1 text-xs font-bold rounded-full uppercase ${getPriorityColor(detailIncident.priority)}`}>
+                                        {detailIncident.priority || 'medium'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-gray-500 uppercase">Category:</span>
+                                    <span className="text-xs font-semibold text-gray-800 capitalize">
+                                        {detailIncident.category?.replace('_', ' ') || 'N/A'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Description */}
+                            <div>
+                                <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-1">Description</h4>
+                                <p className="text-sm text-gray-800 bg-gray-50 p-3 rounded-xl border border-gray-200 whitespace-pre-wrap">
+                                    {detailIncident.description || 'No description provided'}
+                                </p>
+                            </div>
+
+                            {/* Machine / Equipment Details */}
+                            {detailIncident.relatedEquipment && (
+                                <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
+                                    <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-wider mb-2">
+                                        Related Machine / Equipment Details
+                                    </h4>
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                        <div><span className="text-gray-500">Name:</span> <strong className="text-gray-900">{detailIncident.relatedEquipment.name}</strong></div>
+                                        <div><span className="text-gray-500">Asset #:</span> <strong className="font-mono text-gray-900">{detailIncident.relatedEquipment.serial_number || 'N/A'}</strong></div>
+                                        <div><span className="text-gray-500">Brand/Model:</span> <span className="text-gray-900">{detailIncident.relatedEquipment.brand || ''} {detailIncident.relatedEquipment.model_name || ''}</span></div>
+                                        <div><span className="text-gray-500">Category:</span> <span className="text-gray-900">{detailIncident.relatedEquipment.category || 'N/A'}</span></div>
+                                        {detailIncident.relatedEquipment.lab && (
+                                            <div className="col-span-2 text-indigo-700 font-medium">
+                                                Lab Location: {detailIncident.relatedEquipment.lab.name} {detailIncident.relatedEquipment.lab.location ? `(${detailIncident.relatedEquipment.lab.location})` : ''}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Reporter & Assignee */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                                    <span className="text-gray-500 block mb-0.5 font-bold uppercase">Reported By</span>
+                                    <strong className="text-gray-900">{detailIncident.incidentReporter?.name || detailIncident.incidentReporter?.userName || 'N/A'}</strong>
+                                    <div className="text-gray-500">{detailIncident.incidentReporter?.email || detailIncident.incidentReporter?.userMail || ''}</div>
+                                    <div className="text-gray-400 mt-1">{detailIncident.created_at ? new Date(detailIncident.created_at).toLocaleString() : ''}</div>
+                                </div>
+                                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                                    <span className="text-gray-500 block mb-0.5 font-bold uppercase">Assigned Technician</span>
+                                    <strong className="text-gray-900">{detailIncident.incidentAssignee?.name || detailIncident.incidentAssignee?.userName || 'Unassigned'}</strong>
+                                    <div className="text-gray-500">{detailIncident.incidentAssignee?.email || detailIncident.incidentAssignee?.userMail || ''}</div>
+                                </div>
+                            </div>
+
+                            {/* Resolution Details (if resolved) */}
+                            {detailIncident.status === 'resolved' && (
+                                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                                    <h4 className="text-xs font-bold text-emerald-900 uppercase tracking-wider mb-2">
+                                        Resolution Record
+                                    </h4>
+                                    <div className="text-xs space-y-1.5">
+                                        <div>
+                                            <span className="text-gray-600">Resolved By:</span>{' '}
+                                            <strong className="text-emerald-950">
+                                                {detailIncident.incidentResolver?.name || detailIncident.incidentResolver?.userName || 'Technician'}
+                                            </strong>
+                                            {detailIncident.resolved_at && (
+                                                <span className="text-gray-500 ml-2">
+                                                    on {new Date(detailIncident.resolved_at).toLocaleString()}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-600 block mb-1">Resolution Notes:</span>
+                                            <p className="bg-white p-2.5 rounded-lg border border-emerald-100 text-gray-800 whitespace-pre-wrap">
+                                                {detailIncident.resolution_notes || 'No resolution notes entered'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Audit History Timeline */}
+                            <div className="pt-2 border-t border-gray-200">
+                                <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">
+                                    Incident Audit Trail
+                                </h4>
+                                {loadingHistory ? (
+                                    <div className="text-center py-4 text-xs text-gray-500">Loading audit history...</div>
+                                ) : incidentAuditHistory.length === 0 ? (
+                                    <div className="text-xs text-gray-400 italic py-2">No audit log records for this incident yet.</div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {incidentAuditHistory.map((item, idx) => (
+                                            <div key={item.id || idx} className="flex gap-3 text-xs">
+                                                <div className="w-2 relative flex flex-col items-center">
+                                                    <div className="w-2.5 h-2.5 rounded-full bg-red-500 mt-1" />
+                                                    {idx < incidentAuditHistory.length - 1 && (
+                                                        <div className="w-0.5 flex-1 bg-gray-200 mt-1" />
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="font-bold text-gray-900 uppercase">
+                                                            {item.action}
+                                                        </span>
+                                                        <span className="text-gray-400">
+                                                            {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-gray-600 mt-1">
+                                                        By: <span className="font-semibold text-gray-800">{item.user_name || 'System'}</span>
+                                                    </div>
+                                                    {item.notes && (
+                                                        <div className="text-gray-700 mt-1 italic">{item.notes}</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-                                <div className="flex justify-end space-x-3 pt-4">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowModal(false)
-                                            setEditingIncident(null)
-                                            setFormData({
-                                                title: '',
-                                                description: '',
-                                                equipment_id: '',
-                                                priority: 'medium',
-                                                category: 'malfunction',
-                                                location: '',
-                                                reported_by: '',
-                                                assigned_to: ''
-                                            })
-                                        }}
-                                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 transition-colors"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 transition-colors"
-                                    >
-                                        {editingIncident ? 'Update Incident' : 'Report Incident'}
-                                    </button>
-                                </div>
-                            </form>
+            {/* MODAL 4: Delete Confirmation Dialog */}
+            {deleteConfirmId && (
+                <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-100 p-6 text-center">
+                        <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.982 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                            </svg>
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Incident Record?</h3>
+                        <p className="text-sm text-gray-600 mb-6">
+                            Are you sure you want to delete incident #INC-{deleteConfirmId}? This action cannot be undone.
+                        </p>
+                        <div className="flex justify-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setDeleteConfirmId(null)}
+                                className="px-4 py-2.5 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+                                disabled={deletingLoading}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDeleteConfirmed}
+                                disabled={deletingLoading}
+                                className="px-5 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-md transition-colors flex items-center gap-2"
+                            >
+                                {deletingLoading && (
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                )}
+                                <span>Delete Incident</span>
+                            </button>
                         </div>
                     </div>
                 </div>

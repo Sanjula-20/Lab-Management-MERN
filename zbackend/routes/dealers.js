@@ -137,7 +137,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
 // PATCH toggle dealer active status
 router.patch('/:id/status', authenticateToken, async (req, res) => {
     try {
-        const result = await dealerService.toggleStatus(req.params.id);
+        const result = await dealerService.toggleStatus(req.params.id, req.user?.userId);
         res.json({
             success: true,
             data: result,
@@ -163,7 +163,7 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
         const force = req.query.force === 'true';
-        const result = await dealerService.deleteDealer(req.params.id, force);
+        const result = await dealerService.deleteDealer(req.params.id, force, req.user?.userId);
         res.json({
             success: true,
             message: result.message

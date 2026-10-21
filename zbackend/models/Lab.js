@@ -16,9 +16,17 @@ const Lab = sequelize.define('Lab', {
         }
     },
     lab_type: {
-        type: DataTypes.ENUM('cse', 'eee', 'ece', 'mech', 'aids', 'sh'),
+        type: DataTypes.STRING(100),
         allowNull: false,
         defaultValue: 'cse'
+    },
+    department_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: 'departments',
+            key: 'departmentId'
+        }
     },
     established_date: {
         type: DataTypes.DATEONLY,
@@ -30,11 +38,12 @@ const Lab = sequelize.define('Lab', {
     },
     capacity: {
         type: DataTypes.INTEGER,
-        allowNull: true,
-        validate: {
-            min: 1,
-            max: 500
-        }
+        allowNull: true
+    },
+    systems_available: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
     },
     description: {
         type: DataTypes.TEXT,
@@ -56,6 +65,11 @@ const Lab = sequelize.define('Lab', {
             max: 500
         }
     },
+    icon: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        defaultValue: 'desktop'
+    },
     is_active: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
@@ -66,7 +80,7 @@ const Lab = sequelize.define('Lab', {
         allowNull: true,
         references: {
             model: 'users',
-            key: 'id'
+            key: 'userId'
         },
         onUpdate: 'CASCADE',
         onDelete: 'SET NULL'
@@ -76,7 +90,7 @@ const Lab = sequelize.define('Lab', {
         allowNull: true,
         references: {
             model: 'users',
-            key: 'id'
+            key: 'userId'
         },
         onUpdate: 'CASCADE',
         onDelete: 'SET NULL'

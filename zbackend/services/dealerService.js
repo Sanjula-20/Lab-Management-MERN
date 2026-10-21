@@ -1,6 +1,7 @@
 // dealerService.js - Business Logic for Dealer Master
 const { Dealer, Equipment, Lab, sequelize } = require('../models');
 const { Op } = require('sequelize');
+const auditService = require('./auditService');
 
 class DealerService {
     /**
@@ -122,10 +123,14 @@ class DealerService {
             throw new Error('Dealer not found');
         }
 
-        // Fetch associated equipment list
+        // Fetch associated equipment list with purchase details
         const equipment = await Equipment.findAll({
             where: { dealer_id: id, is_active: true },
-            attributes: ['id', 'name', 'serial_number', 'model', 'brand', 'category', 'status', 'condition_status', 'lab_id'],
+            attributes: [
+                'id', 'name', 'serial_number', 'model', 'brand', 'category', 
+                'status', 'condition_status', 'lab_id', 'purchase_date', 
+                'purchase_price', 'current_value'
+            ],
             include: [
                 {
                     model: Lab,
@@ -133,7 +138,7 @@ class DealerService {
                     attributes: ['id', 'name', 'location']
                 }
             ],
-            order: [['name', 'ASC']],
+            order: [['purchase_date', 'DESC'], ['name', 'ASC']],
             limit: 100
         });
 
@@ -150,13 +155,28 @@ class DealerService {
      * Create new dealer
      */
     async createDealer(dealerData, userId) {
-        const { name, address, contact_person, email, phone, city, gst_number, is_active = true } = dealerData;
+        const { 
+            name, address, contact_person, email, phone, 
+            city, state, postal_code, gst_number, notes, is_active = true 
+        } = dealerData;
 
         if (!name || !name.trim()) {
-            throw new Error('Dealer Name is required');
+            throw new Error('Company / Dealer Name is required');
         }
 
         const trimmedName = name.trim();
+
+        if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+            throw new Error('Invalid email address format');
+        }
+
+        if (phone && phone.trim() && phone.trim().length < 7) {
+            throw new Error('Phone number must contain at least 7 characters');
+        }
+
+        if (gst_number && gst_number.trim() && !/^[0-9A-Za-z]{15}$/.test(gst_number.trim())) {
+            throw new Error('GSTIN must be a 15-character alphanumeric code');
+        }
 
         // Check if name already exists
         const existing = await Dealer.findOne({
@@ -174,9 +194,27 @@ class DealerService {
             email: email && email.trim() ? email.trim() : null,
             phone: phone ? phone.trim() : null,
             city: city ? city.trim() : null,
-            gst_number: gst_number ? gst_number.trim() : null,
+            state: state ? state.trim() : null,
+            postal_code: postal_code ? postal_code.trim() : null,
+            gst_number: gst_number ? gst_number.trim().toUpperCase() : null,
+            notes: notes ? notes.trim() : null,
             is_active: is_active !== undefined ? Boolean(is_active) : true
         });
+
+        // Audit log
+        try {
+            await auditService.logEvent({
+                entity_type: 'dealer',
+                entity_id: dealer.id,
+                action: 'create',
+                previous_values: null,
+                new_values: { name: dealer.name, email: dealer.email, phone: dealer.phone, city: dealer.city, state: dealer.state },
+                user_id: userId,
+                user_name: 'Admin'
+            });
+        } catch (auditErr) {
+            console.error('⚠️ Failed to log dealer create audit event:', auditErr.message);
+        }
 
         return {
             ...dealer.toJSON(),
@@ -193,12 +231,15 @@ class DealerService {
             throw new Error('Dealer not found');
         }
 
-        const { name, address, contact_person, email, phone, city, gst_number, is_active } = dealerData;
+        const { 
+            name, address, contact_person, email, phone, 
+            city, state, postal_code, gst_number, notes, is_active 
+        } = dealerData;
         const updateFields = {};
 
         if (name !== undefined) {
             const trimmedName = name.trim();
-            if (!trimmedName) throw new Error('Dealer Name cannot be empty');
+            if (!trimmedName) throw new Error('Company / Dealer Name cannot be empty');
 
             if (trimmedName.toLowerCase() !== dealer.name.toLowerCase()) {
                 const existing = await Dealer.findOne({
@@ -214,6 +255,27 @@ class DealerService {
             updateFields.name = trimmedName;
         }
 
+        if (email !== undefined) {
+            if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+                throw new Error('Invalid email address format');
+            }
+            updateFields.email = email && email.trim() ? email.trim() : null;
+        }
+
+        if (phone !== undefined) {
+            if (phone && phone.trim() && phone.trim().length < 7) {
+                throw new Error('Phone number must contain at least 7 characters');
+            }
+            updateFields.phone = phone ? phone.trim() : null;
+        }
+
+        if (gst_number !== undefined) {
+            if (gst_number && gst_number.trim() && !/^[0-9A-Za-z]{15}$/.test(gst_number.trim())) {
+                throw new Error('GSTIN must be a 15-character alphanumeric code');
+            }
+            updateFields.gst_number = gst_number ? gst_number.trim().toUpperCase() : null;
+        }
+
         if (address !== undefined) {
             updateFields.address = address ? address.trim() : null;
         }
@@ -222,25 +284,34 @@ class DealerService {
             updateFields.contact_person = contact_person ? contact_person.trim() : null;
         }
 
-        if (email !== undefined) {
-            updateFields.email = email && email.trim() ? email.trim() : null;
-        }
-
-        if (phone !== undefined) {
-            updateFields.phone = phone ? phone.trim() : null;
-        }
-
         if (city !== undefined) {
             updateFields.city = city ? city.trim() : null;
         }
 
-        if (gst_number !== undefined) {
-            updateFields.gst_number = gst_number ? gst_number.trim() : null;
+        if (state !== undefined) {
+            updateFields.state = state ? state.trim() : null;
+        }
+
+        if (postal_code !== undefined) {
+            updateFields.postal_code = postal_code ? postal_code.trim() : null;
+        }
+
+        if (notes !== undefined) {
+            updateFields.notes = notes ? notes.trim() : null;
         }
 
         if (is_active !== undefined) {
             updateFields.is_active = Boolean(is_active);
         }
+
+        const oldValues = {
+            name: dealer.name,
+            email: dealer.email,
+            phone: dealer.phone,
+            city: dealer.city,
+            state: dealer.state,
+            is_active: dealer.is_active
+        };
 
         await dealer.update(updateFields);
 
@@ -250,6 +321,28 @@ class DealerService {
                 { dealer_name: updateFields.name },
                 { where: { dealer_id: id } }
             );
+        }
+
+        // Audit log
+        try {
+            await auditService.logEvent({
+                entity_type: 'dealer',
+                entity_id: dealer.id,
+                action: 'update',
+                previous_values: oldValues,
+                new_values: {
+                    name: dealer.name,
+                    email: dealer.email,
+                    phone: dealer.phone,
+                    city: dealer.city,
+                    state: dealer.state,
+                    is_active: dealer.is_active
+                },
+                user_id: userId,
+                user_name: 'Admin'
+            });
+        } catch (auditErr) {
+            console.error('⚠️ Failed to log dealer update audit event:', auditErr.message);
         }
 
         const equipmentCount = await Equipment.count({ where: { dealer_id: id, is_active: true } });
@@ -263,7 +356,7 @@ class DealerService {
     /**
      * Delete dealer by ID
      */
-    async deleteDealer(id, force = false) {
+    async deleteDealer(id, force = false, userId = null) {
         const dealer = await Dealer.findByPk(id);
         if (!dealer) {
             throw new Error('Dealer not found');
@@ -287,7 +380,23 @@ class DealerService {
             );
         }
 
+        const oldData = { name: dealer.name, email: dealer.email, is_active: dealer.is_active };
         await dealer.destroy();
+
+        // Audit log
+        try {
+            await auditService.logEvent({
+                entity_type: 'dealer',
+                entity_id: id,
+                action: 'delete',
+                previous_values: oldData,
+                new_values: null,
+                user_id: userId,
+                user_name: 'Admin'
+            });
+        } catch (auditErr) {
+            console.error('⚠️ Failed to log dealer delete audit event:', auditErr.message);
+        }
 
         return {
             success: true,
@@ -298,14 +407,30 @@ class DealerService {
     /**
      * Toggle dealer active status
      */
-    async toggleStatus(id) {
+    async toggleStatus(id, userId = null) {
         const dealer = await Dealer.findByPk(id);
         if (!dealer) {
             throw new Error('Dealer not found');
         }
 
+        const oldStatus = dealer.is_active;
         const newStatus = !dealer.is_active;
         await dealer.update({ is_active: newStatus });
+
+        // Audit log
+        try {
+            await auditService.logEvent({
+                entity_type: 'dealer',
+                entity_id: dealer.id,
+                action: 'update',
+                previous_values: { is_active: oldStatus },
+                new_values: { is_active: newStatus },
+                user_id: userId,
+                user_name: 'Admin'
+            });
+        } catch (auditErr) {
+            console.error('⚠️ Failed to log dealer status toggle audit event:', auditErr.message);
+        }
 
         return {
             ...dealer.toJSON(),

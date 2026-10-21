@@ -271,6 +271,10 @@ export const bookingsAPI = {
         method: 'DELETE',
     }),
     
+    cancelBooking: (id) => apiCall(`/bookings/${id}/cancel`, {
+        method: 'PATCH',
+    }),
+    
     approveBooking: (id) => apiCall(`/bookings/${id}/approve`, {
         method: 'PATCH',
     }),
@@ -301,6 +305,11 @@ export const labsAPI = {
         const response = await apiCall(`/labs${queryString ? '?' + queryString : ''}`);
         return response.data?.labs || response.data || response;
     },
+    getAllLabs: async (params = {}) => {
+        const queryString = new URLSearchParams(params).toString();
+        const response = await apiCall(`/labs${queryString ? '?' + queryString : ''}`);
+        return response.data?.labs || response.data || response;
+    },
     
     getById: (id) => apiCall(`/labs/${id}`),
     
@@ -322,9 +331,14 @@ export const labsAPI = {
         const response = await apiCall('/labs/stats');
         return response.data || response;
     },
+
+    getStaff: async () => {
+        const response = await apiCall('/labs/staff');
+        return response.data || response;
+    },
 };
 
-// ✅ ADDED: Roles API
+// ✅ ADDED: Roles API & Permissions Matrix
 export const rolesAPI = {
     getAll: async (params = {}) => {
         const queryString = new URLSearchParams(params).toString();
@@ -350,6 +364,32 @@ export const rolesAPI = {
 
     getStats: async () => {
         const response = await apiCall('/roles/stats');
+        return response.data || response;
+    },
+
+    // Permissions matrix endpoints
+    getPermissions: async () => {
+        const response = await apiCall('/roles/permissions');
+        return response.data || response;
+    },
+
+    getMyPermissions: async () => {
+        const response = await apiCall('/roles/my-permissions');
+        return response.data || response;
+    },
+
+    updatePermissions: async (roleId, permissions) => {
+        const response = await apiCall(`/roles/permissions/${roleId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ permissions }),
+        });
+        return response.data || response;
+    },
+
+    restoreDefaults: async () => {
+        const response = await apiCall('/roles/permissions/restore-defaults', {
+            method: 'POST',
+        });
         return response.data || response;
     },
 };
@@ -380,6 +420,123 @@ export const departmentsAPI = {
 
     getStats: async (companyId = 0) => {
         const response = await apiCall(`/departments/stats?companyId=${companyId}`);
+        return response.data || response;
+    },
+};
+
+// ✅ ADDED: Faculty API
+export const facultyAPI = {
+    getAll: async (params = {}) => {
+        const queryString = new URLSearchParams(params).toString();
+        const response = await apiCall(`/faculty${queryString ? '?' + queryString : ''}`);
+        return response.data || response;
+    },
+
+    getById: (id) => apiCall(`/faculty/${id}`),
+
+    create: (data) => apiCall('/faculty', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    }),
+
+    update: (id, data) => apiCall(`/faculty/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    }),
+
+    toggleStatus: (id) => apiCall(`/faculty/${id}/toggle-status`, {
+        method: 'PATCH',
+    }),
+
+    delete: (id) => apiCall(`/faculty/${id}`, {
+        method: 'DELETE',
+    }),
+
+    getStats: async () => {
+        const response = await apiCall('/faculty/stats');
+        return response.data || response;
+    },
+};
+
+// ✅ ADDED: Equipment Categories API
+export const equipmentCategoriesAPI = {
+    getAll: async (params = {}) => {
+        const queryString = new URLSearchParams(params).toString();
+        const response = await apiCall(`/equipment-categories${queryString ? '?' + queryString : ''}`);
+        return response.data || response;
+    },
+
+    getById: (id) => apiCall(`/equipment-categories/${id}`),
+
+    create: (data) => apiCall('/equipment-categories', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    }),
+
+    update: (id, data) => apiCall(`/equipment-categories/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    }),
+
+    delete: (id) => apiCall(`/equipment-categories/${id}`, {
+        method: 'DELETE',
+    }),
+};
+
+// ✅ ADDED: Hardware Options API
+export const hardwareOptionsAPI = {
+    getAll: async (params = {}) => {
+        const queryString = new URLSearchParams(params).toString();
+        const response = await apiCall(`/hardware-options${queryString ? '?' + queryString : ''}`);
+        return response.data || response;
+    },
+
+    getGrouped: async () => {
+        const response = await apiCall('/hardware-options/grouped');
+        return response.data || response;
+    },
+
+    create: (data) => apiCall('/hardware-options', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    }),
+
+    update: (id, data) => apiCall(`/hardware-options/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    }),
+
+    delete: (id) => apiCall(`/hardware-options/${id}`, {
+        method: 'DELETE',
+    }),
+};
+
+// ✅ ADDED: Dealers API
+export const dealersAPI = {
+    getAll: async (params = {}) => {
+        const queryString = new URLSearchParams(params).toString();
+        const response = await apiCall(`/dealers${queryString ? '?' + queryString : ''}`);
+        return response.data || response;
+    },
+
+    getById: (id) => apiCall(`/dealers/${id}`),
+
+    create: (data) => apiCall('/dealers', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    }),
+
+    update: (id, data) => apiCall(`/dealers/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    }),
+
+    delete: (id) => apiCall(`/dealers/${id}`, {
+        method: 'DELETE',
+    }),
+
+    getStats: async () => {
+        const response = await apiCall('/dealers/stats');
         return response.data || response;
     },
 };
@@ -578,6 +735,10 @@ export default {
     labs: labsAPI,
     roles: rolesAPI,
     departments: departmentsAPI,
+    faculty: facultyAPI,
+    equipmentCategories: equipmentCategoriesAPI,
+    hardwareOptions: hardwareOptionsAPI,
+    dealers: dealersAPI,
     maintenance: maintenanceAPI,
     reports: reportsAPI,
     orders: ordersAPI,

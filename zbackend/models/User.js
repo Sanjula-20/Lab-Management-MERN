@@ -60,6 +60,15 @@ const User = sequelize.define(
       type: DataTypes.ENUM('Active', 'Inactive'),
       defaultValue: 'Active',
     },
+    phone: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+    },
+    position: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      comment: 'Designation / Job Title',
+    },
     profileImage: {
       type: DataTypes.STRING(500),
       defaultValue: '/uploads/default.jpg',

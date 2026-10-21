@@ -43,10 +43,13 @@ export function ProtectedRoute({ children, requiredRole = null }) {
 
     // Check for required role if specified
     if (requiredRole && currentUser) {
-        // Handle both single role and array of roles
-        const hasRequiredRole = Array.isArray(requiredRole) 
-            ? requiredRole.includes(currentUser.role)
-            : currentUser.role === requiredRole;
+        const isMasterAdmin = currentUser.role === 'master_admin' || currentUser.roleId === 7;
+        // Handle both single role and array of roles (master_admin always has access)
+        const hasRequiredRole = isMasterAdmin || (
+            Array.isArray(requiredRole) 
+                ? requiredRole.includes(currentUser.role)
+                : currentUser.role === requiredRole
+        );
 
         if (!hasRequiredRole) {
             return (

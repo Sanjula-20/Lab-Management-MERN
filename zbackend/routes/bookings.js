@@ -1,5 +1,5 @@
 const express = require('express');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, checkPermission } = require('../middleware/auth');
 const { trackAccess } = require('./recentlyAccessed');
 const bookingService = require('../services/bookingService');
 
@@ -187,36 +187,134 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// DELETE booking (students not allowed)
-router.delete('/:id', async (req, res) => {
+// APPROVE booking (Admin / Master Admin with approve permission)
+const approveHandler = async (req, res) => {
     try {
-        if (req.user.role === 'student') {
-            return res.status(403).json({
-                success: false,
-                message: 'Students are not allowed to delete bookings'
-            });
-        }
-        const booking = await bookingService.getBookingById(req.params.id);
-        
-        await bookingService.deleteBooking(req.params.id);
+        const adminUserId = req.user.userId || req.user.id;
+        const booking = await bookingService.approveBooking(req.params.id, adminUserId, req.user.role);
         res.json({
             success: true,
-            message: 'Booking deleted successfully'
+            message: 'Booking approved successfully',
+            data: booking
         });
     } catch (error) {
-        console.error('Error deleting booking:', error);
-        if (error.message === 'Booking not found') {
-            return res.status(404).json({
-                success: false,
-                message: error.message
-            });
+        console.error('Error approving booking:', error);
+        if (error.message.includes('not found')) {
+            return res.status(404).json({ success: false, message: error.message });
+        }
+        if (error.message.includes('cannot approve their own') || error.message.includes('Cannot approve booking')) {
+            return res.status(400).json({ success: false, message: error.message });
         }
         res.status(500).json({
             success: false,
-            message: 'Failed to delete booking',
+            message: error.message || 'Failed to approve booking',
             error: error.message
         });
     }
+};
+router.patch('/:id/approve', checkPermission('bookings', 'approve'), approveHandler);
+router.post('/:id/approve', checkPermission('bookings', 'approve'), approveHandler);
+
+// REJECT booking (Admin / Master Admin with approve permission)
+const rejectHandler = async (req, res) => {
+    try {
+        const adminUserId = req.user.userId || req.user.id;
+        const { reason } = req.body;
+        if (!reason || !reason.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'A rejection reason is required'
+            });
+        }
+        const booking = await bookingService.rejectBooking(req.params.id, adminUserId, req.user.role, reason);
+        res.json({
+            success: true,
+            message: 'Booking rejected successfully',
+            data: booking
+        });
+    } catch (error) {
+        console.error('Error rejecting booking:', error);
+        if (error.message.includes('not found')) {
+            return res.status(404).json({ success: false, message: error.message });
+        }
+        if (error.message.includes('cannot reject their own') || error.message.includes('Cannot reject booking')) {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to reject booking',
+            error: error.message
+        });
+    }
+};
+router.patch('/:id/reject', checkPermission('bookings', 'approve'), rejectHandler);
+router.post('/:id/reject', checkPermission('bookings', 'approve'), rejectHandler);
+
+// CANCEL booking (Faculty can cancel their own, Admins can cancel any)
+const cancelHandler = async (req, res) => {
+    try {
+        const userId = req.user.userId || req.user.id;
+        const booking = await bookingService.cancelBooking(req.params.id, userId, req.user.role);
+        res.json({
+            success: true,
+            message: 'Booking cancelled successfully',
+            data: booking
+        });
+    } catch (error) {
+        console.error('Error cancelling booking:', error);
+        if (error.message.includes('not found')) {
+            return res.status(404).json({ success: false, message: error.message });
+        }
+        if (error.message.includes('permission')) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
+        if (error.message.includes('already')) {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to cancel booking',
+            error: error.message
+        });
+    }
+};
+router.patch('/:id/cancel', cancelHandler);
+router.post('/:id/cancel', cancelHandler);
+
+// Status update dispatcher (routes to approve, reject, cancel, or general update)
+router.patch('/:id/status', async (req, res) => {
+    try {
+        const { status, rejection_reason, reason } = req.body;
+        const normalized = String(status || '').toLowerCase();
+        const userId = req.user.userId || req.user.id;
+
+        if (normalized === 'approved' || normalized === 'confirmed') {
+            const booking = await bookingService.approveBooking(req.params.id, userId, req.user.role);
+            return res.json({ success: true, message: 'Booking approved successfully', data: booking });
+        } else if (normalized === 'rejected') {
+            const rejReason = rejection_reason || reason || 'Booking rejected by administrator';
+            const booking = await bookingService.rejectBooking(req.params.id, userId, req.user.role, rejReason);
+            return res.json({ success: true, message: 'Booking rejected successfully', data: booking });
+        } else if (normalized === 'cancelled') {
+            const booking = await bookingService.cancelBooking(req.params.id, userId, req.user.role);
+            return res.json({ success: true, message: 'Booking cancelled successfully', data: booking });
+        } else {
+            const booking = await bookingService.updateBooking(req.params.id, { status: normalized }, userId, req.user.role);
+            return res.json({ success: true, message: `Booking status updated to ${normalized}`, data: booking });
+        }
+    } catch (error) {
+        console.error('Error updating booking status:', error);
+        if (error.message.includes('not found')) {
+            return res.status(404).json({ success: false, message: error.message });
+        }
+        if (error.message.includes('permission') || error.message.includes('cannot approve their own') || error.message.includes('cannot reject their own')) {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+        return res.status(500).json({ success: false, message: error.message || 'Failed to update status', error: error.message });
+    }
 });
+
+// DELETE booking (cancels booking)
+router.delete('/:id', cancelHandler);
 
 module.exports = router;

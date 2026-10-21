@@ -2,28 +2,40 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { Sidebar, AppHeader } from './common/Navigation'
 
 // API Configuration
 const API_BASE_URL = '/api'
 
-// Department Configuration & Helpers
-const DEPARTMENT_CONFIG = {
-    cse: { label: 'Computer Science & Engineering (CSE)', short: 'CSE', badge: 'bg-blue-100 text-blue-800 border-blue-200' },
-    eee: { label: 'Electrical & Electronics Engineering (EEE)', short: 'EEE', badge: 'bg-amber-100 text-amber-800 border-amber-200' },
-    ece: { label: 'Electronics & Communication Engineering (ECE)', short: 'ECE', badge: 'bg-purple-100 text-purple-800 border-purple-200' },
-    mech: { label: 'Mechanical Engineering (MECH)', short: 'MECH', badge: 'bg-orange-100 text-orange-800 border-orange-200' },
-    aids: { label: 'Artificial Intelligence & Data Science (AIDS)', short: 'AIDS', badge: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
-    sh: { label: 'Science & Humanities (S&H)', short: 'S&H', badge: 'bg-teal-100 text-teal-800 border-teal-200' }
+// Department Configuration & Dynamic Resolution Helper
+export const getDepartmentInfo = (lab, departmentsList = []) => {
+    if (lab?.departmentDetails?.name) {
+        return {
+            label: lab.departmentDetails.name,
+            short: lab.departmentDetails.code || lab.departmentDetails.name.substring(0, 4).toUpperCase(),
+            badge: 'bg-blue-100 text-blue-800 border-blue-200'
+        };
+    }
+    const deptIdOrCode = lab?.department_id || lab?.lab_type;
+    const found = departmentsList.find(d => 
+        String(d.id) === String(deptIdOrCode) || 
+        d.code?.toLowerCase() === String(deptIdOrCode)?.toLowerCase() ||
+        d.name?.toLowerCase() === String(deptIdOrCode)?.toLowerCase()
+    );
+    if (found) {
+        return {
+            label: found.name,
+            short: found.code || found.name.substring(0, 4).toUpperCase(),
+            badge: 'bg-indigo-100 text-indigo-800 border-indigo-200'
+        };
+    }
+    const raw = String(deptIdOrCode || 'General').toUpperCase();
+    return {
+        label: raw,
+        short: raw.substring(0, 4),
+        badge: 'bg-gray-100 text-gray-800 border-gray-200'
+    };
 };
-
-const DEPARTMENT_OPTIONS = [
-    { value: 'cse', label: 'Computer Science & Engineering (CSE)' },
-    { value: 'eee', label: 'Electrical & Electronics Engineering (EEE)' },
-    { value: 'ece', label: 'Electronics & Communication Engineering (ECE)' },
-    { value: 'mech', label: 'Mechanical Engineering (MECH)' },
-    { value: 'aids', label: 'Artificial Intelligence & Data Science (AIDS)' },
-    { value: 'sh', label: 'Science & Humanities (S&H)' }
-];
 
 const formatLabDate = (dateStr) => {
     if (!dateStr) return '—';
@@ -37,15 +49,15 @@ const formatLabDate = (dateStr) => {
 };
 
 // Add Lab Modal Component (kept within this file)
-function AddLabModal({ isOpen, onClose, onLabAdded, staffList = [] }) {
+function AddLabModal({ isOpen, onClose, onLabAdded, staffList = [], departmentsList = [] }) {
     const [formData, setFormData] = useState({
         name: '',
         established_date: '',
-        lab_type: 'cse',
+        department_id: '',
+        lab_type: '',
         in_charge_id: '',
         lab_seats: 30, // Seating Capacity (required field)
-        capacity: 30,
-        square_feet: '',
+        systems_available: 30, // Systems Available (required field)
         location: '',
         description: ''
     })
@@ -63,9 +75,22 @@ function AddLabModal({ isOpen, onClose, onLabAdded, staffList = [] }) {
             return
         }
 
+        if (!formData.department_id && !formData.lab_type) {
+            setError('Department is required')
+            setLoading(false)
+            return
+        }
+
         const seats = parseInt(formData.lab_seats)
-        if (!seats || isNaN(seats) || seats < 1) {
-            setError('Seating Capacity is a required field and must be at least 1')
+        if (isNaN(seats) || seats < 1) {
+            setError('Seating Capacity must be at least 1')
+            setLoading(false)
+            return
+        }
+
+        const systems = parseInt(formData.systems_available)
+        if (isNaN(systems) || systems < 0) {
+            setError('Number of Systems Available cannot be negative')
             setLoading(false)
             return
         }
@@ -74,11 +99,12 @@ function AddLabModal({ isOpen, onClose, onLabAdded, staffList = [] }) {
             const payload = {
                 name: formData.name.trim(),
                 established_date: formData.established_date || null,
-                lab_type: formData.lab_type,
+                department_id: formData.department_id ? parseInt(formData.department_id) : null,
+                lab_type: formData.lab_type || null,
                 in_charge_id: formData.in_charge_id ? parseInt(formData.in_charge_id) : null,
                 lab_seats: seats,
-                capacity: formData.capacity ? parseInt(formData.capacity) : seats,
-                square_feet: formData.square_feet ? parseFloat(formData.square_feet) : null,
+                capacity: seats,
+                systems_available: systems,
                 location: formData.location.trim() || null,
                 description: formData.description.trim() || null
             }
@@ -97,11 +123,11 @@ function AddLabModal({ isOpen, onClose, onLabAdded, staffList = [] }) {
                 setFormData({
                     name: '',
                     established_date: '',
-                    lab_type: 'cse',
+                    department_id: '',
+                    lab_type: '',
                     in_charge_id: '',
                     lab_seats: 30,
-                    capacity: 30,
-                    square_feet: '',
+                    systems_available: 30,
                     location: '',
                     description: ''
                 })
@@ -188,22 +214,31 @@ function AddLabModal({ isOpen, onClose, onLabAdded, staffList = [] }) {
                             />
                         </div>
 
-                        {/* 2. Department */}
+                        {/* 2. Department (Fetched dynamically from Department Master) */}
                         <div>
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
                                 Department <span className="text-red-500">*</span>
                             </label>
                             <select
-                                name="lab_type"
-                                value={formData.lab_type}
-                                onChange={handleChange}
+                                name="department_id"
+                                value={formData.department_id}
+                                onChange={(e) => {
+                                    const selectedId = e.target.value;
+                                    const selectedDept = departmentsList.find(d => String(d.id) === String(selectedId));
+                                    setFormData(prev => ({
+                                        ...prev,
+                                        department_id: selectedId,
+                                        lab_type: selectedDept?.code || selectedDept?.name || ''
+                                    }));
+                                }}
                                 className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
                                 disabled={loading}
                                 required
                             >
-                                {DEPARTMENT_OPTIONS.map(type => (
-                                    <option key={type.value} value={type.value}>
-                                        {type.label}
+                                <option value="">-- Select Department --</option>
+                                {departmentsList.map(dept => (
+                                    <option key={dept.id} value={dept.id}>
+                                        {dept.name} {dept.code ? `(${dept.code})` : ''}
                                     </option>
                                 ))}
                             </select>
@@ -212,7 +247,7 @@ function AddLabModal({ isOpen, onClose, onLabAdded, staffList = [] }) {
                         {/* 3. Established Date */}
                         <div>
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Established Date
+                                Established Date <span className="text-gray-400 font-normal">(Optional)</span>
                             </label>
                             <input
                                 type="date"
@@ -228,7 +263,7 @@ function AddLabModal({ isOpen, onClose, onLabAdded, staffList = [] }) {
                         {/* 4. Lab In-Charge */}
                         <div className="md:col-span-2">
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Lab In-Charge (Staff Member)
+                                Lab In-Charge (Faculty / Staff)
                             </label>
                             <select
                                 name="in_charge_id"
@@ -239,17 +274,17 @@ function AddLabModal({ isOpen, onClose, onLabAdded, staffList = [] }) {
                             >
                                 <option value="">-- No In-Charge Assigned (Assign Later) --</option>
                                 {staffList.map(staff => (
-                                    <option key={staff.id} value={staff.id}>
-                                        {staff.name} ({staff.role || 'Staff'} • {staff.department || 'General'})
+                                    <option key={staff.id || staff.userId} value={staff.id || staff.userId}>
+                                        {staff.name} ({staff.role || staff.designation || 'Faculty'} • {staff.department || staff.departmentDetails?.name || 'General'})
                                     </option>
                                 ))}
                             </select>
                         </div>
 
-                        {/* 5. Seating Capacity (REQUIRED) */}
+                        {/* 5. Seating Capacity (Distinct numeric field, >= 1) */}
                         <div>
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Seating Capacity <span className="text-red-500 font-bold">* (Required)</span>
+                                Seating Capacity <span className="text-red-500 font-bold">*</span>
                             </label>
                             <div className="relative">
                                 <input
@@ -266,35 +301,36 @@ function AddLabModal({ isOpen, onClose, onLabAdded, staffList = [] }) {
                                 />
                                 <span className="absolute right-3.5 top-2.5 text-xs text-gray-400 pointer-events-none">seats</span>
                             </div>
-                            <p className="text-[11px] text-gray-500 mt-1">Number of work seats/terminals available for students.</p>
+                            <p className="text-[11px] text-gray-500 mt-1">Number of physical seats for students.</p>
                         </div>
 
-                        {/* Total Room Capacity */}
+                        {/* 6. Systems Available (Distinct numeric field, >= 0) */}
                         <div>
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Total Room Capacity
+                                Number of Systems Available <span className="text-red-500 font-bold">*</span>
                             </label>
                             <div className="relative">
                                 <input
                                     type="number"
-                                    name="capacity"
-                                    value={formData.capacity}
+                                    name="systems_available"
+                                    value={formData.systems_available}
                                     onChange={handleChange}
-                                    min="1"
+                                    min="0"
                                     max="500"
                                     className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                    placeholder="30"
+                                    placeholder="e.g., 30"
+                                    required
                                     disabled={loading}
                                 />
-                                <span className="absolute right-3.5 top-2.5 text-xs text-gray-400 pointer-events-none">people</span>
+                                <span className="absolute right-3.5 top-2.5 text-xs text-gray-400 pointer-events-none">systems</span>
                             </div>
-                            <p className="text-[11px] text-gray-500 mt-1">Maximum physical room occupancy.</p>
+                            <p className="text-[11px] text-gray-500 mt-1">Working computers/systems available in the lab.</p>
                         </div>
 
-                        {/* Location */}
-                        <div>
+                        {/* 7. Location (Required lab-level field) */}
+                        <div className="md:col-span-2">
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Location
+                                Location <span className="text-red-500">*</span>
                             </label>
                             <input
                                 type="text"
@@ -303,32 +339,15 @@ function AddLabModal({ isOpen, onClose, onLabAdded, staffList = [] }) {
                                 onChange={handleChange}
                                 className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                 placeholder="e.g., Building A, Floor 2, Room 201"
+                                required
                                 disabled={loading}
                             />
                         </div>
 
-                        {/* Square Feet */}
-                        <div>
-                            <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Floor Area (Sq Ft)
-                            </label>
-                            <input
-                                type="number"
-                                name="square_feet"
-                                value={formData.square_feet}
-                                onChange={handleChange}
-                                min="0"
-                                step="0.1"
-                                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                placeholder="e.g., 1200"
-                                disabled={loading}
-                            />
-                        </div>
-
-                        {/* Description */}
+                        {/* 8. Description & Features */}
                         <div className="md:col-span-2">
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Description
+                                Description & Additional Facilities
                             </label>
                             <textarea
                                 name="description"
@@ -336,7 +355,7 @@ function AddLabModal({ isOpen, onClose, onLabAdded, staffList = [] }) {
                                 onChange={handleChange}
                                 className="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                 rows="2"
-                                placeholder="Brief description of the laboratory and equipment..."
+                                placeholder="Special features, equipment list, smart boards, projector details..."
                                 disabled={loading}
                             />
                         </div>
@@ -376,15 +395,15 @@ function AddLabModal({ isOpen, onClose, onLabAdded, staffList = [] }) {
 }
 
 // Edit Lab Modal Component
-function EditLabModal({ isOpen, onClose, lab, onLabUpdated, staffList = [] }) {
+function EditLabModal({ isOpen, onClose, lab, onLabUpdated, staffList = [], departmentsList = [] }) {
     const [formData, setFormData] = useState({
         name: '',
         established_date: '',
-        lab_type: 'cse',
+        department_id: '',
+        lab_type: '',
         in_charge_id: '',
-        lab_seats: 30, // Seating Capacity (required field)
-        capacity: 30,
-        square_feet: '',
+        lab_seats: 30, // Seating Capacity
+        systems_available: 30, // Systems Available
         location: '',
         description: ''
     })
@@ -396,11 +415,11 @@ function EditLabModal({ isOpen, onClose, lab, onLabUpdated, staffList = [] }) {
             setFormData({
                 name: lab.name || '',
                 established_date: lab.established_date ? lab.established_date.split('T')[0] : '',
-                lab_type: lab.lab_type || 'cse',
+                department_id: lab.department_id ? String(lab.department_id) : (lab.departmentDetails?.id ? String(lab.departmentDetails.id) : ''),
+                lab_type: lab.lab_type || '',
                 in_charge_id: lab.in_charge_id ? String(lab.in_charge_id) : (lab.inCharge?.id ? String(lab.inCharge.id) : ''),
                 lab_seats: lab.lab_seats !== null && lab.lab_seats !== undefined ? lab.lab_seats : (lab.capacity || 30),
-                capacity: lab.capacity || 30,
-                square_feet: lab.square_feet || '',
+                systems_available: lab.systems_available !== null && lab.systems_available !== undefined ? lab.systems_available : 0,
                 location: lab.location || '',
                 description: lab.description || ''
             })
@@ -420,8 +439,15 @@ function EditLabModal({ isOpen, onClose, lab, onLabUpdated, staffList = [] }) {
         }
 
         const seats = parseInt(formData.lab_seats)
-        if (!seats || isNaN(seats) || seats < 1) {
-            setError('Seating Capacity is a required field and must be at least 1')
+        if (isNaN(seats) || seats < 1) {
+            setError('Seating Capacity must be at least 1')
+            setLoading(false)
+            return
+        }
+
+        const systems = parseInt(formData.systems_available)
+        if (isNaN(systems) || systems < 0) {
+            setError('Number of Systems Available cannot be negative')
             setLoading(false)
             return
         }
@@ -430,11 +456,12 @@ function EditLabModal({ isOpen, onClose, lab, onLabUpdated, staffList = [] }) {
             const payload = {
                 name: formData.name.trim(),
                 established_date: formData.established_date || null,
-                lab_type: formData.lab_type,
+                department_id: formData.department_id ? parseInt(formData.department_id) : null,
+                lab_type: formData.lab_type || null,
                 in_charge_id: formData.in_charge_id ? parseInt(formData.in_charge_id) : null,
                 lab_seats: seats,
-                capacity: formData.capacity ? parseInt(formData.capacity) : seats,
-                square_feet: formData.square_feet ? parseFloat(formData.square_feet) : null,
+                capacity: seats,
+                systems_available: systems,
                 location: formData.location.trim() || null,
                 description: formData.description.trim() || null
             }
@@ -533,22 +560,31 @@ function EditLabModal({ isOpen, onClose, lab, onLabUpdated, staffList = [] }) {
                             />
                         </div>
 
-                        {/* 2. Department */}
+                        {/* 2. Department (Fetched dynamically from Department Master) */}
                         <div>
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
                                 Department <span className="text-red-500">*</span>
                             </label>
                             <select
-                                name="lab_type"
-                                value={formData.lab_type}
-                                onChange={handleChange}
+                                name="department_id"
+                                value={formData.department_id}
+                                onChange={(e) => {
+                                    const selectedId = e.target.value;
+                                    const selectedDept = departmentsList.find(d => String(d.id) === String(selectedId));
+                                    setFormData(prev => ({
+                                        ...prev,
+                                        department_id: selectedId,
+                                        lab_type: selectedDept?.code || selectedDept?.name || ''
+                                    }));
+                                }}
                                 className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
                                 disabled={loading}
                                 required
                             >
-                                {DEPARTMENT_OPTIONS.map(type => (
-                                    <option key={type.value} value={type.value}>
-                                        {type.label}
+                                <option value="">-- Select Department --</option>
+                                {departmentsList.map(dept => (
+                                    <option key={dept.id} value={dept.id}>
+                                        {dept.name} {dept.code ? `(${dept.code})` : ''}
                                     </option>
                                 ))}
                             </select>
@@ -557,7 +593,7 @@ function EditLabModal({ isOpen, onClose, lab, onLabUpdated, staffList = [] }) {
                         {/* 3. Established Date */}
                         <div>
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Established Date
+                                Established Date <span className="text-gray-400 font-normal">(Optional)</span>
                             </label>
                             <input
                                 type="date"
@@ -573,7 +609,7 @@ function EditLabModal({ isOpen, onClose, lab, onLabUpdated, staffList = [] }) {
                         {/* 4. Lab In-Charge */}
                         <div className="md:col-span-2">
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Lab In-Charge (Staff Member)
+                                Lab In-Charge (Faculty / Staff)
                             </label>
                             <select
                                 name="in_charge_id"
@@ -584,17 +620,17 @@ function EditLabModal({ isOpen, onClose, lab, onLabUpdated, staffList = [] }) {
                             >
                                 <option value="">-- Unassigned --</option>
                                 {staffList.map(staff => (
-                                    <option key={staff.id} value={staff.id}>
-                                        {staff.name} ({staff.role || 'Staff'} • {staff.department || 'General'})
+                                    <option key={staff.id || staff.userId} value={staff.id || staff.userId}>
+                                        {staff.name} ({staff.role || staff.designation || 'Faculty'} • {staff.department || staff.departmentDetails?.name || 'General'})
                                     </option>
                                 ))}
                             </select>
                         </div>
 
-                        {/* 5. Seating Capacity (REQUIRED) */}
+                        {/* 5. Seating Capacity (Distinct, >= 1) */}
                         <div>
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Seating Capacity <span className="text-red-500 font-bold">* (Required)</span>
+                                Seating Capacity <span className="text-red-500 font-bold">*</span>
                             </label>
                             <div className="relative">
                                 <input
@@ -611,35 +647,36 @@ function EditLabModal({ isOpen, onClose, lab, onLabUpdated, staffList = [] }) {
                                 />
                                 <span className="absolute right-3.5 top-2.5 text-xs text-gray-400 pointer-events-none">seats</span>
                             </div>
-                            <p className="text-[11px] text-gray-500 mt-1">Number of work seats/terminals available for students.</p>
+                            <p className="text-[11px] text-gray-500 mt-1">Number of physical seats for students.</p>
                         </div>
 
-                        {/* Total Room Capacity */}
+                        {/* 6. Systems Available (Distinct, >= 0) */}
                         <div>
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Total Room Capacity
+                                Number of Systems Available <span className="text-red-500 font-bold">*</span>
                             </label>
                             <div className="relative">
                                 <input
                                     type="number"
-                                    name="capacity"
-                                    value={formData.capacity}
+                                    name="systems_available"
+                                    value={formData.systems_available}
                                     onChange={handleChange}
-                                    min="1"
+                                    min="0"
                                     max="500"
                                     className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                    placeholder="30"
+                                    placeholder="e.g., 30"
+                                    required
                                     disabled={loading}
                                 />
-                                <span className="absolute right-3.5 top-2.5 text-xs text-gray-400 pointer-events-none">people</span>
+                                <span className="absolute right-3.5 top-2.5 text-xs text-gray-400 pointer-events-none">systems</span>
                             </div>
-                            <p className="text-[11px] text-gray-500 mt-1">Maximum physical room occupancy.</p>
+                            <p className="text-[11px] text-gray-500 mt-1">Working computers/systems available in the lab.</p>
                         </div>
 
-                        {/* Location */}
-                        <div>
+                        {/* 7. Location (Required lab-level field) */}
+                        <div className="md:col-span-2">
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Location
+                                Location <span className="text-red-500">*</span>
                             </label>
                             <input
                                 type="text"
@@ -648,32 +685,15 @@ function EditLabModal({ isOpen, onClose, lab, onLabUpdated, staffList = [] }) {
                                 onChange={handleChange}
                                 className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                 placeholder="e.g., Building A, Floor 2, Room 201"
+                                required
                                 disabled={loading}
                             />
                         </div>
 
-                        {/* Square Feet */}
-                        <div>
-                            <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Floor Area (Sq Ft)
-                            </label>
-                            <input
-                                type="number"
-                                name="square_feet"
-                                value={formData.square_feet}
-                                onChange={handleChange}
-                                min="0"
-                                step="0.1"
-                                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                placeholder="e.g., 1200"
-                                disabled={loading}
-                            />
-                        </div>
-
-                        {/* Description */}
+                        {/* 8. Description */}
                         <div className="md:col-span-2">
                             <label className="block text-gray-700 text-xs font-bold uppercase tracking-wider mb-1.5">
-                                Description
+                                Description & Additional Facilities
                             </label>
                             <textarea
                                 name="description"
@@ -681,7 +701,7 @@ function EditLabModal({ isOpen, onClose, lab, onLabUpdated, staffList = [] }) {
                                 onChange={handleChange}
                                 className="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                 rows="2"
-                                placeholder="Brief description of the laboratory and equipment..."
+                                placeholder="Special features, equipment list, projector details..."
                                 disabled={loading}
                             />
                         </div>
@@ -884,7 +904,7 @@ function AssignInChargeModal({ isOpen, onClose, lab, staffList = [], onInChargeU
 }
 
 // View Lab Modal Component
-function ViewLabModal({ isOpen, onClose, lab, onManageInCharge }) {
+function ViewLabModal({ isOpen, onClose, lab, onManageInCharge, departmentsList = [] }) {
     useEffect(() => {
         if (!isOpen) return
         const handleKeyDown = (e) => {
@@ -898,11 +918,7 @@ function ViewLabModal({ isOpen, onClose, lab, onManageInCharge }) {
 
     if (!isOpen || !lab) return null
 
-    const deptInfo = DEPARTMENT_CONFIG[lab.lab_type] || {
-        label: lab.lab_type?.toUpperCase() || 'General',
-        short: lab.lab_type?.toUpperCase() || 'GENERAL',
-        badge: 'bg-blue-100 text-blue-800 border-blue-200'
-    }
+    const deptInfo = getDepartmentInfo(lab, departmentsList);
 
     return (
         <div 
@@ -938,37 +954,50 @@ function ViewLabModal({ isOpen, onClose, lab, onManageInCharge }) {
                 </div>
 
                 <div className="space-y-5">
-                    {/* Core Laboratory Details (Highlighted 5 Fields) */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                        {/* Seating Capacity Card (Required Field) */}
-                        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3.5 shadow-sm">
-                            <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow flex-shrink-0">
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    {/* Core Laboratory Stats (Seating Capacity & Systems Available) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                        {/* Seating Capacity Card */}
+                        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3 shadow-sm">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow flex-shrink-0">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" />
                                 </svg>
                             </div>
                             <div>
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Seating Capacity (Required)</div>
-                                <div className="text-xl font-extrabold text-emerald-950 mt-0.5">
-                                    {lab.lab_seats || lab.seating_capacity || lab.capacity || 'Not specified'} Seats
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">Seating Capacity</div>
+                                <div className="text-lg font-extrabold text-emerald-950 mt-0.5">
+                                    {lab.lab_seats || lab.capacity || 'Not specified'} Seats
                                 </div>
-                                <div className="text-[11px] text-emerald-700">Dedicated student workstations</div>
+                            </div>
+                        </div>
+
+                        {/* Systems Available Card */}
+                        <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4 flex items-center gap-3 shadow-sm">
+                            <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow flex-shrink-0">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-purple-800">Systems Available</div>
+                                <div className="text-lg font-extrabold text-purple-950 mt-0.5">
+                                    {lab.systems_available !== null && lab.systems_available !== undefined ? lab.systems_available : 0} Systems
+                                </div>
                             </div>
                         </div>
 
                         {/* Established Date Card */}
-                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3.5 shadow-sm">
-                            <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow flex-shrink-0">
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3 shadow-sm">
+                            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow flex-shrink-0">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                 </svg>
                             </div>
                             <div>
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-blue-800">Established Date</div>
-                                <div className="text-lg font-bold text-blue-950 mt-0.5">
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-blue-800">Established Date</div>
+                                <div className="text-base font-bold text-blue-950 mt-0.5">
                                     {formatLabDate(lab.established_date)}
                                 </div>
-                                <div className="text-[11px] text-blue-700">Official foundation date</div>
                             </div>
                         </div>
                     </div>
@@ -995,15 +1024,11 @@ function ViewLabModal({ isOpen, onClose, lab, onManageInCharge }) {
                                 <div className="text-gray-900 text-sm font-medium">{lab.location || 'Not specified'}</div>
                             </div>
                             <div>
-                                <label className="block text-gray-500 text-xs font-medium mb-0.5">Total Room Capacity</label>
-                                <div className="text-gray-900 text-sm font-medium">{lab.capacity ? `${lab.capacity} people` : 'Not specified'}</div>
-                            </div>
-                            {lab.square_feet && (
-                                <div>
-                                    <label className="block text-gray-500 text-xs font-medium mb-0.5">Floor Area</label>
-                                    <div className="text-gray-900 text-sm font-medium">{lab.square_feet} sq ft</div>
+                                <label className="block text-gray-500 text-xs font-medium mb-0.5">Seating vs Systems</label>
+                                <div className="text-gray-900 text-sm font-medium">
+                                    {lab.lab_seats || lab.capacity || 0} seats • {lab.systems_available ?? 0} systems
                                 </div>
-                            )}
+                            </div>
                             <div>
                                 <label className="block text-gray-500 text-xs font-medium mb-0.5">Record Created</label>
                                 <div className="text-gray-900 text-sm font-medium">
@@ -1012,6 +1037,7 @@ function ViewLabModal({ isOpen, onClose, lab, onManageInCharge }) {
                             </div>
                         </div>
                     </div>
+
 
                     {/* Lab In-Charge Card */}
                     <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl">
@@ -1110,6 +1136,7 @@ function ViewLabModal({ isOpen, onClose, lab, onManageInCharge }) {
 export default function LabManagement() {
     const [labs, setLabs] = useState([])
     const [staffList, setStaffList] = useState([])
+    const [departments, setDepartments] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -1124,9 +1151,11 @@ export default function LabManagement() {
 
     // Sidebar and UI state
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+    const [mobileOpen, setMobileOpen] = useState(false)
     const [showUserMenu, setShowUserMenu] = useState(false)
     const [showNotifications, setShowNotifications] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
+    const [permissions, setPermissions] = useState(null)
 
     const { user, isAuthenticated, logout, loading: authLoading } = useAuth()
     const navigate = useNavigate()
@@ -1135,6 +1164,26 @@ export default function LabManagement() {
     // Refs
     const userMenuRef = useRef(null)
     const notificationRef = useRef(null)
+
+    // Fetch dynamic permissions for logged-in user
+    useEffect(() => {
+        let isMounted = true
+        fetch('/api/roles/my-permissions', { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (isMounted && data.success && data.data) {
+                    setPermissions(data.data)
+                }
+            })
+            .catch(() => {})
+        return () => { isMounted = false }
+    }, [user])
+
+    const isMasterAdmin = user?.role === 'master_admin' || user?.roleId === 7
+    const isAdmin = user?.role === 'admin' || user?.roleId === 6 || isMasterAdmin
+    const canCreateLab = isMasterAdmin || isAdmin || Boolean(permissions?.labs?.can_create)
+    const canEditLab = isMasterAdmin || isAdmin || Boolean(permissions?.labs?.can_edit)
+    const canDeleteLab = isMasterAdmin || isAdmin || Boolean(permissions?.labs?.can_delete)
 
     // Sidebar Navigation Items
     const navigationItems = [
@@ -1367,11 +1416,39 @@ export default function LabManagement() {
         }
     }
 
-    // Refresh labs and staff with visible loading state
+    // Fetch departments dynamically from Department Master
+    const fetchDepartments = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/departments`, {
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            const result = await response.json()
+
+            if (result.success) {
+                const rawDepts = result.data?.departments || (Array.isArray(result.data) ? result.data : [])
+                const normalized = rawDepts.map(d => ({
+                    ...d,
+                    id: d.departmentId || d.id,
+                    departmentId: d.departmentId || d.id,
+                    name: d.departmentName || d.name || 'Department',
+                    departmentName: d.departmentName || d.name || 'Department',
+                    code: d.departmentAcr || d.code || ''
+                }))
+                setDepartments(normalized)
+            }
+        } catch (error) {
+            console.error('Error fetching departments:', error)
+        }
+    }
+
+    // Refresh labs, staff and departments with visible loading state
     const handleRefresh = async () => {
         setIsRefreshing(true)
         try {
-            await Promise.all([fetchLabs(), fetchStaff()])
+            await Promise.all([fetchLabs(), fetchStaff(), fetchDepartments()])
         } finally {
             // Keep spinning for at least 600ms so user has clear visual confirmation
             setTimeout(() => setIsRefreshing(false), 600)
@@ -1379,8 +1456,16 @@ export default function LabManagement() {
     }
 
     // Delete lab
+    // Delete lab with proper confirmation and feedback
     const handleDeleteLab = async (labId) => {
-        if (!confirm('Are you sure you want to delete this lab?')) {
+        if (!canDeleteLab) {
+            alert('You do not have permission to delete laboratories.')
+            return
+        }
+
+        const labToDelete = labs.find(l => l.id === labId)
+        const labName = labToDelete ? labToDelete.name : 'this lab'
+        if (!window.confirm(`Are you sure you want to delete lab "${labName}"? This action cannot be undone.`)) {
             return
         }
 
@@ -1395,7 +1480,7 @@ export default function LabManagement() {
             const result = await response.json()
 
             if (result.success) {
-                setLabs(labs.filter(lab => lab.id !== labId))
+                setLabs(prev => prev.filter(lab => lab.id !== labId))
             } else {
                 throw new Error(result.message || 'Failed to delete lab')
             }
@@ -1407,24 +1492,36 @@ export default function LabManagement() {
 
     // Handle lab added
     const handleLabAdded = (newLab) => {
-        setLabs(prev => [newLab, ...prev])
+        if (newLab) {
+            setLabs(prev => [newLab, ...prev])
+        }
+        fetchLabs()
+        fetchStaff()
     }
 
     // Handle lab updated
     const handleLabUpdated = (updatedLab) => {
-        setLabs(prev => prev.map(lab =>
-            lab.id === updatedLab.id ? updatedLab : lab
-        ))
+        if (updatedLab) {
+            setLabs(prev => prev.map(lab =>
+                lab.id === updatedLab.id ? updatedLab : lab
+            ))
+        }
+        fetchLabs()
+        fetchStaff()
     }
 
     // Handle direct in-charge update
     const handleInChargeUpdated = (updatedLab) => {
-        setLabs(prev => prev.map(lab =>
-            lab.id === updatedLab.id ? updatedLab : lab
-        ))
-        if (selectedLab && selectedLab.id === updatedLab.id) {
-            setSelectedLab(updatedLab)
+        if (updatedLab) {
+            setLabs(prev => prev.map(lab =>
+                lab.id === updatedLab.id ? updatedLab : lab
+            ))
+            if (selectedLab && selectedLab.id === updatedLab.id) {
+                setSelectedLab(updatedLab)
+            }
         }
+        fetchLabs()
+        fetchStaff()
     }
 
     // Handle edit lab
@@ -1469,18 +1566,23 @@ export default function LabManagement() {
 
     // Filter labs based on search, department, and in-charge status
     const filteredLabs = labs.filter(lab => {
+        const deptInfo = getDepartmentInfo(lab, departments);
         const matchesSearch = 
             lab.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             lab.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             lab.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             lab.inCharge?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             lab.inCharge?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (DEPARTMENT_CONFIG[lab.lab_type]?.label?.toLowerCase()?.includes(searchTerm.toLowerCase())) ||
-            (DEPARTMENT_CONFIG[lab.lab_type]?.short?.toLowerCase()?.includes(searchTerm.toLowerCase())) ||
+            deptInfo.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            deptInfo.short.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (lab.established_date && String(lab.established_date).includes(searchTerm)) ||
-            (lab.lab_seats && String(lab.lab_seats).includes(searchTerm))
+            (lab.lab_seats && String(lab.lab_seats).includes(searchTerm)) ||
+            (lab.systems_available && String(lab.systems_available).includes(searchTerm))
 
-        const matchesType = filterType === 'all' || lab.lab_type === filterType
+        const matchesType = filterType === 'all' || 
+            String(lab.department_id) === String(filterType) ||
+            String(lab.departmentDetails?.id) === String(filterType) ||
+            lab.lab_type?.toLowerCase() === String(filterType).toLowerCase()
 
         const matchesInCharge = 
             inChargeFilter === 'all' ||
@@ -1498,7 +1600,7 @@ export default function LabManagement() {
         const loadData = async () => {
             if (!isAuthenticated) return // Don't fetch if not authenticated
             setLoading(true)
-            await Promise.all([fetchLabs(), fetchStaff()])
+            await Promise.all([fetchLabs(), fetchStaff(), fetchDepartments()])
             setLoading(false)
         }
         loadData()
@@ -1535,181 +1637,52 @@ export default function LabManagement() {
 
     return (
         <div className="min-h-screen w-full bg-gray-50 flex overflow-x-hidden">
-            {/* Sidebar */}
-            <div className={`fixed inset-y-0 left-0 z-50 ${sidebarCollapsed ? 'w-16' : 'w-64'} bg-white shadow-lg border-r border-gray-200 transition-all duration-300`}>
-                {/* Sidebar Header */}
-                <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-purple-600">
-                    {!sidebarCollapsed && (
-                        <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-white rounded-lg overflow-hidden p-1">
-                                <img 
-                                    src="/nec-logo.png" 
-                                    alt="NEC Logo" 
-                                    className="w-full h-full object-contain"
-                                />
-                            </div>
-                            <h1 className="text-xl font-bold text-white">
-                                NEC LabMS
-                            </h1>
-                        </div>
-                    )}
-                    <button
-                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        className="p-2 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors text-white"
-                    >
-                        <svg className={`w-5 h-5 transition-transform ${sidebarCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"></path>
-                        </svg>
-                    </button>
-                </div>
+            {/* Shared Consistent Sidebar */}
+            <Sidebar
+                sidebarCollapsed={sidebarCollapsed}
+                setSidebarCollapsed={setSidebarCollapsed}
+                currentPath="/lab-management"
+                stats={{ totalLabs: labs.length }}
+                mobileOpen={mobileOpen}
+                setMobileOpen={setMobileOpen}
+            />
 
-                {/* Navigation Items */}
-                <nav className="mt-6 px-3">
-                    <div className="space-y-1">
-                        {navigationItems.filter(item => item.show).map((item) => {
-                            const isActive = location.pathname === item.path || (item.path === '/lab-management' && location.pathname === '/lab_management')
-                            return (
-                                <button
-                                    key={item.id}
-                                    onClick={() => handleNavigation(item.path)}
-                                    className={`w-full flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${isActive
-                                            ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
-                                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                                        }`}
-                                    title={sidebarCollapsed ? item.title : ''}
-                                >
-                                    <div className="flex items-center justify-center w-5 h-5">
-                                        {item.icon}
-                                    </div>
-                                    {!sidebarCollapsed && (
-                                        <span className="ml-3 flex-1 text-left">{item.title}</span>
-                                    )}
-                                </button>
-                            )
-                        })}
-                    </div>
-                </nav>
-
-                {/* Sidebar Footer */}
-                {!sidebarCollapsed && (
-                    <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                                <span className="text-white font-medium text-sm">
-                                    {(user?.name || user?.email)?.charAt(0)?.toUpperCase()}
-                                </span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">
-                                    {user?.name || user?.email}
-                                </p>
-                                <p className="text-xs text-gray-500 capitalize">
-                                    {user?.role}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Main Content */}
-            <div className={`flex-1 min-w-0 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} transition-all duration-300 overflow-x-hidden`}>
-                {/* Top Header */}
-                <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
-                    <div className="px-6 py-4">
-                        <div className="flex items-center justify-between">
-                            {/* Search Bar */}
-                            <form onSubmit={handleSearch} className="flex-1 max-w-lg">
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        placeholder="Search anything..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-2 bg-gray-100 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
-                                    />
-                                    <svg className="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                                    </svg>
-                                </div>
-                            </form>
-
-                            {/* Header Right Section */}
-                            <div className="flex items-center space-x-4">
-                                {/* Notifications */}
-                                <div className="relative" ref={notificationRef}>
-                                    <button
-                                        onClick={() => setShowNotifications(!showNotifications)}
-                                        className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                                        title="Notifications"
-                                    >
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
-                                        </svg>
-                                    </button>
-                                </div>
-
-                                {/* User Menu */}
-                                <div className="relative" ref={userMenuRef}>
-                                    <button
-                                        onClick={() => setShowUserMenu(!showUserMenu)}
-                                        className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                                    >
-                                        <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                                            <span className="text-white font-medium text-sm">
-                                                {(user?.name || user?.email)?.charAt(0)?.toUpperCase()}
-                                            </span>
-                                        </div>
-                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
-                                        </svg>
-                                    </button>
-
-                                    {/* User Dropdown */}
-                                    {showUserMenu && (
-                                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
-                                            <div className="px-4 py-2 border-b border-gray-100">
-                                                <p className="text-sm font-medium text-gray-900">{user?.name || user?.email}</p>
-                                                <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
-                                            </div>
-                                            <button
-                                                onClick={() => handleNavigation('/profile')}
-                                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                                                </svg>
-                                                <span>Profile</span>
-                                            </button>
-                                            <div className="border-t border-gray-100 my-1"></div>
-                                            <button
-                                                onClick={handleLogout}
-                                                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-                                                </svg>
-                                                <span>Logout</span>
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </header>
+            {/* Main Content Area */}
+            <div className={`flex-1 min-w-0 transition-all duration-300 overflow-x-hidden ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'}`}>
+                {/* Shared Consistent Header */}
+                <AppHeader
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                    showUserMenu={showUserMenu}
+                    setShowUserMenu={setShowUserMenu}
+                    showNotifications={showNotifications}
+                    setShowNotifications={setShowNotifications}
+                    onToggleMobileMenu={() => setMobileOpen(!mobileOpen)}
+                />
 
                 {/* Main Content */}
                 <main className="p-4 sm:p-6 min-w-0 max-w-full">
-                    {/* Page Header */}
+                    {/* Page Header with Prominent Add Lab Button */}
                     <div className="mb-6">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                             <div>
                                 <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Lab Management</h1>
                                 <p className="mt-1 text-sm text-gray-600">
                                     Manage and monitor all laboratory spaces and their configurations.
                                 </p>
                             </div>
+                            {canCreateLab && (
+                                <button
+                                    onClick={() => setIsAddModalOpen(true)}
+                                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-semibold rounded-xl hover:from-blue-700 hover:to-indigo-700 shadow-md hover:shadow-lg transition-all self-start sm:self-auto cursor-pointer"
+                                    id="header-add-lab-btn"
+                                >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    <span>Add New Lab</span>
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -1752,8 +1725,8 @@ export default function LabManagement() {
                                     className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                                 >
                                     <option value="all">All Departments</option>
-                                    {DEPARTMENT_OPTIONS.map(d => (
-                                        <option key={d.value} value={d.value}>{d.label}</option>
+                                    {departments.map(d => (
+                                        <option key={d.id} value={d.id}>{d.name} {d.code ? `(${d.code})` : ''}</option>
                                     ))}
                                 </select>
                                 <select
@@ -1765,19 +1738,6 @@ export default function LabManagement() {
                                     <option value="assigned">Assigned Staff</option>
                                     <option value="unassigned">Unassigned</option>
                                 </select>
-                                {user?.role === 'admin' && (
-                                    <button
-                                        onClick={() => setIsAddModalOpen(true)}
-                                        className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors whitespace-nowrap flex-shrink-0"
-                                    >
-                                        <span className="flex items-center">
-                                            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                            </svg>
-                                            Add New Lab
-                                        </span>
-                                    </button>
-                                )}
                             </div>
                         </div>
                     </div>
@@ -1822,13 +1782,13 @@ export default function LabManagement() {
                                         {searchTerm || filterType !== 'all' || inChargeFilter !== 'all' ? 'No labs found matching your criteria' : 'No labs found'}
                                     </h3>
                                     <p className="mt-1 text-sm text-gray-500">
-                                        {user?.role === 'admin' ? 'Get started by creating a new lab.' : 'No labs available to view.'}
+                                        {canCreateLab ? 'Get started by creating a new lab.' : 'No labs available to view.'}
                                     </p>
-                                    {user?.role === 'admin' && !searchTerm && filterType === 'all' && inChargeFilter === 'all' && (
+                                    {canCreateLab && !searchTerm && filterType === 'all' && inChargeFilter === 'all' && (
                                         <div className="mt-6">
                                             <button
                                                 onClick={() => setIsAddModalOpen(true)}
-                                                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                                                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 cursor-pointer"
                                             >
                                                 Add Your First Lab
                                             </button>
@@ -1844,18 +1804,16 @@ export default function LabManagement() {
                                                 <th className="px-4 py-3.5 text-left">Department</th>
                                                 <th className="px-4 py-3.5 text-left whitespace-nowrap">Established</th>
                                                 <th className="px-4 py-3.5 text-left whitespace-nowrap">Seating Capacity</th>
+                                                <th className="px-4 py-3.5 text-left whitespace-nowrap">Systems Available</th>
                                                 <th className="px-4 py-3.5 text-left">Lab In-Charge</th>
                                                 <th className="px-5 py-3.5 text-right pr-5">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-gray-100 text-sm">
                                             {filteredLabs.map((lab) => {
-                                                const deptInfo = DEPARTMENT_CONFIG[lab.lab_type] || {
-                                                    label: lab.lab_type?.toUpperCase() || 'General',
-                                                    short: lab.lab_type?.toUpperCase() || 'GEN',
-                                                    badge: 'bg-blue-100 text-blue-800 border-blue-200'
-                                                };
+                                                const deptInfo = getDepartmentInfo(lab, departments);
                                                 const seatsCount = lab.lab_seats ?? lab.seating_capacity ?? lab.capacity ?? 0;
+                                                const systemsCount = lab.systems_available ?? 0;
 
                                                 return (
                                                     <tr key={lab.id} className="hover:bg-blue-50/30 transition-colors">
@@ -1923,9 +1881,9 @@ export default function LabManagement() {
                                                         <td className="px-4 py-4 whitespace-nowrap align-middle">
                                                             {lab.inCharge ? (
                                                                 <div 
-                                                                    onClick={user?.role === 'admin' ? () => handleManageInCharge(lab) : undefined}
-                                                                    className={`flex items-center space-x-2.5 ${user?.role === 'admin' ? 'cursor-pointer group' : ''}`}
-                                                                    title={user?.role === 'admin' ? 'Click to change In-Charge' : ''}
+                                                                    onClick={canEditLab ? () => handleManageInCharge(lab) : undefined}
+                                                                    className={`flex items-center space-x-2.5 ${canEditLab ? 'cursor-pointer group' : ''}`}
+                                                                    title={canEditLab ? 'Click to change In-Charge' : ''}
                                                                 >
                                                                     <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-2xs flex-shrink-0 group-hover:ring-2 group-hover:ring-blue-400 transition">
                                                                         {lab.inCharge.name?.charAt(0).toUpperCase()}
@@ -1933,7 +1891,7 @@ export default function LabManagement() {
                                                                     <div className="min-w-0 max-w-[150px]">
                                                                         <div className="text-xs font-bold text-gray-900 truncate group-hover:text-blue-600 transition flex items-center gap-1">
                                                                             <span className="truncate">{lab.inCharge.name}</span>
-                                                                            {user?.role === 'admin' && (
+                                                                            {canEditLab && (
                                                                                 <svg className="w-3 h-3 text-gray-400 group-hover:text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                                                                                 </svg>
@@ -1951,9 +1909,9 @@ export default function LabManagement() {
                                                                 </div>
                                                             ) : (
                                                                 <div 
-                                                                    onClick={user?.role === 'admin' ? () => handleManageInCharge(lab) : undefined}
-                                                                    className={`flex items-center space-x-2.5 ${user?.role === 'admin' ? 'cursor-pointer group' : ''}`}
-                                                                    title={user?.role === 'admin' ? 'Click to assign In-Charge' : ''}
+                                                                    onClick={canEditLab ? () => handleManageInCharge(lab) : undefined}
+                                                                    className={`flex items-center space-x-2.5 ${canEditLab ? 'cursor-pointer group' : ''}`}
+                                                                    title={canEditLab ? 'Click to assign In-Charge' : ''}
                                                                 >
                                                                     <div className="w-8 h-8 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 text-gray-400 flex items-center justify-center flex-shrink-0 group-hover:border-blue-400 group-hover:text-blue-500 transition">
                                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1965,7 +1923,7 @@ export default function LabManagement() {
                                                                             Unassigned
                                                                         </div>
                                                                         <div className="text-[11px] font-semibold text-blue-600 group-hover:text-blue-800 group-hover:underline">
-                                                                            {user?.role === 'admin' ? '+ Assign Staff' : 'None'}
+                                                                            {canEditLab ? '+ Assign Staff' : 'None'}
                                                                         </div>
                                                                     </div>
                                                                 </div>
@@ -1979,7 +1937,7 @@ export default function LabManagement() {
                                                                 <div className="relative group/btn">
                                                                     <button
                                                                         onClick={() => handleViewLab(lab)}
-                                                                        className="w-8 h-8 rounded-lg flex items-center justify-center text-blue-600 bg-blue-50/80 hover:bg-blue-600 hover:text-white border border-blue-200 hover:border-blue-600 shadow-2xs transition-all duration-150"
+                                                                        className="w-8 h-8 rounded-lg flex items-center justify-center text-blue-600 bg-blue-50/80 hover:bg-blue-600 hover:text-white border border-blue-200 hover:border-blue-600 shadow-2xs transition-all duration-150 cursor-pointer"
                                                                         title="View"
                                                                         aria-label="View Lab"
                                                                     >
@@ -1996,13 +1954,13 @@ export default function LabManagement() {
                                                                     </div>
                                                                 </div>
 
-                                                                {user?.role === 'admin' && (
+                                                                {canEditLab && (
                                                                     <>
                                                                         {/* In-Charge Action */}
                                                                         <div className="relative group/btn">
                                                                             <button
                                                                                 onClick={() => handleManageInCharge(lab)}
-                                                                                className="w-8 h-8 rounded-lg flex items-center justify-center text-purple-600 bg-purple-50/80 hover:bg-purple-600 hover:text-white border border-purple-200 hover:border-purple-600 shadow-2xs transition-all duration-150"
+                                                                                className="w-8 h-8 rounded-lg flex items-center justify-center text-purple-600 bg-purple-50/80 hover:bg-purple-600 hover:text-white border border-purple-200 hover:border-purple-600 shadow-2xs transition-all duration-150 cursor-pointer"
                                                                                 title="In-Charge"
                                                                                 aria-label="Manage In-Charge"
                                                                             >
@@ -2022,7 +1980,7 @@ export default function LabManagement() {
                                                                         <div className="relative group/btn">
                                                                             <button
                                                                                 onClick={() => handleEditLab(lab)}
-                                                                                className="w-8 h-8 rounded-lg flex items-center justify-center text-indigo-600 bg-indigo-50/80 hover:bg-indigo-600 hover:text-white border border-indigo-200 hover:border-indigo-600 shadow-2xs transition-all duration-150"
+                                                                                className="w-8 h-8 rounded-lg flex items-center justify-center text-indigo-600 bg-indigo-50/80 hover:bg-indigo-600 hover:text-white border border-indigo-200 hover:border-indigo-600 shadow-2xs transition-all duration-150 cursor-pointer"
                                                                                 title="Edit"
                                                                                 aria-label="Edit Lab"
                                                                             >
@@ -2037,27 +1995,29 @@ export default function LabManagement() {
                                                                                 <div className="w-1.5 h-1.5 -mt-0.5 rotate-45 bg-gray-900"></div>
                                                                             </div>
                                                                         </div>
-
-                                                                        {/* Delete Action */}
-                                                                        <div className="relative group/btn">
-                                                                            <button
-                                                                                onClick={() => handleDeleteLab(lab.id)}
-                                                                                className="w-8 h-8 rounded-lg flex items-center justify-center text-red-600 bg-red-50/80 hover:bg-red-600 hover:text-white border border-red-200 hover:border-red-600 shadow-2xs transition-all duration-150"
-                                                                                title="Delete"
-                                                                                aria-label="Delete Lab"
-                                                                            >
-                                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                                                </svg>
-                                                                            </button>
-                                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/btn:flex flex-col items-center pointer-events-none z-30">
-                                                                                <span className="px-2 py-0.5 text-[11px] font-semibold text-white bg-gray-900 rounded shadow-md whitespace-nowrap">
-                                                                                    Delete
-                                                                                </span>
-                                                                                <div className="w-1.5 h-1.5 -mt-0.5 rotate-45 bg-gray-900"></div>
-                                                                            </div>
-                                                                        </div>
                                                                     </>
+                                                                )}
+
+                                                                {canDeleteLab && (
+                                                                    /* Delete Action */
+                                                                    <div className="relative group/btn">
+                                                                        <button
+                                                                            onClick={() => handleDeleteLab(lab.id)}
+                                                                            className="w-8 h-8 rounded-lg flex items-center justify-center text-red-600 bg-red-50/80 hover:bg-red-600 hover:text-white border border-red-200 hover:border-red-600 shadow-2xs transition-all duration-150 cursor-pointer"
+                                                                            title="Delete"
+                                                                            aria-label="Delete Lab"
+                                                                        >
+                                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                            </svg>
+                                                                        </button>
+                                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/btn:flex flex-col items-center pointer-events-none z-30">
+                                                                            <span className="px-2 py-0.5 text-[11px] font-semibold text-white bg-gray-900 rounded shadow-md whitespace-nowrap">
+                                                                                Delete
+                                                                            </span>
+                                                                            <div className="w-1.5 h-1.5 -mt-0.5 rotate-45 bg-gray-900"></div>
+                                                                        </div>
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                         </td>
@@ -2074,14 +2034,17 @@ export default function LabManagement() {
             </div>
 
             {/* Modals */}
-            {user?.role === 'admin' && (
+            {canCreateLab && (
+                <AddLabModal
+                    isOpen={isAddModalOpen}
+                    onClose={() => setIsAddModalOpen(false)}
+                    onLabAdded={handleLabAdded}
+                    staffList={staffList}
+                    departmentsList={departments}
+                />
+            )}
+            {canEditLab && (
                 <>
-                    <AddLabModal
-                        isOpen={isAddModalOpen}
-                        onClose={() => setIsAddModalOpen(false)}
-                        onLabAdded={handleLabAdded}
-                        staffList={staffList}
-                    />
                     <EditLabModal
                         isOpen={isEditModalOpen}
                         onClose={() => {
@@ -2091,6 +2054,7 @@ export default function LabManagement() {
                         lab={selectedLab}
                         onLabUpdated={handleLabUpdated}
                         staffList={staffList}
+                        departmentsList={departments}
                     />
                     <AssignInChargeModal
                         isOpen={isAssignInChargeModalOpen}
@@ -2113,7 +2077,8 @@ export default function LabManagement() {
                     setSelectedLab(null)
                 }}
                 lab={selectedLab}
-                onManageInCharge={user?.role === 'admin' ? handleManageInCharge : null}
+                departmentsList={departments}
+                onManageInCharge={canEditLab ? handleManageInCharge : null}
             />
         </div>
     )

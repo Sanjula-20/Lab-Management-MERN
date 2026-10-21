@@ -28,14 +28,30 @@ function AddDealerModal({ isOpen, onClose, onDealerAdded }) {
         name: '',
         address: '',
         city: '',
+        state: '',
+        postal_code: '',
         contact_person: '',
         phone: '',
         email: '',
         gst_number: '',
+        notes: '',
         is_active: true
     })
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+
+    // ESC key support
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' && !loading) {
+                onClose()
+            }
+        }
+        if (isOpen) {
+            window.addEventListener('keydown', handleKeyDown)
+        }
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isOpen, loading, onClose])
 
     useEffect(() => {
         if (isOpen) {
@@ -43,10 +59,13 @@ function AddDealerModal({ isOpen, onClose, onDealerAdded }) {
                 name: '',
                 address: '',
                 city: '',
+                state: '',
+                postal_code: '',
                 contact_person: '',
                 phone: '',
                 email: '',
                 gst_number: '',
+                notes: '',
                 is_active: true
             })
             setError('')
@@ -68,7 +87,7 @@ function AddDealerModal({ isOpen, onClose, onDealerAdded }) {
         e.preventDefault()
 
         if (!formData.name.trim()) {
-            setError('Dealer Name is required')
+            setError('Dealer / Company Name is required')
             return
         }
 
@@ -117,7 +136,7 @@ function AddDealerModal({ isOpen, onClose, onDealerAdded }) {
                         </div>
                         <div>
                             <h2 className="text-xl font-bold">Add New Dealer</h2>
-                            <p className="text-xs text-blue-100">Create a vendor profile for equipment procurement</p>
+                            <p className="text-xs text-blue-100">Create a vendor profile for equipment procurement (Press ESC to close)</p>
                         </div>
                     </div>
                     <button
@@ -146,7 +165,7 @@ function AddDealerModal({ isOpen, onClose, onDealerAdded }) {
                         {/* Dealer Name */}
                         <div className="md:col-span-2">
                             <label className="block text-sm font-semibold text-gray-800 mb-1">
-                                Dealer Name <span className="text-red-500">*</span>
+                                Company / Dealer Name <span className="text-red-500">*</span>
                             </label>
                             <input
                                 type="text"
@@ -169,7 +188,7 @@ function AddDealerModal({ isOpen, onClose, onDealerAdded }) {
                                 value={formData.address}
                                 onChange={handleChange}
                                 placeholder="Enter street address, building, landmark, area"
-                                rows="3"
+                                rows="2"
                                 required
                                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm resize-none"
                             />
@@ -185,7 +204,37 @@ function AddDealerModal({ isOpen, onClose, onDealerAdded }) {
                                 name="city"
                                 value={formData.city}
                                 onChange={handleChange}
-                                placeholder="e.g., Bengaluru, Mumbai, Chennai"
+                                placeholder="e.g., Bengaluru, Mumbai"
+                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                            />
+                        </div>
+
+                        {/* State */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                State
+                            </label>
+                            <input
+                                type="text"
+                                name="state"
+                                value={formData.state}
+                                onChange={handleChange}
+                                placeholder="e.g., Karnataka, Maharashtra"
+                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                            />
+                        </div>
+
+                        {/* Postal Code */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Postal / PIN Code
+                            </label>
+                            <input
+                                type="text"
+                                name="postal_code"
+                                value={formData.postal_code}
+                                onChange={handleChange}
+                                placeholder="e.g., 560001"
                                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                             />
                         </div>
@@ -193,7 +242,7 @@ function AddDealerModal({ isOpen, onClose, onDealerAdded }) {
                         {/* GST Number */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                GST / Tax ID
+                                GST / Tax ID (15 chars)
                             </label>
                             <input
                                 type="text"
@@ -201,6 +250,7 @@ function AddDealerModal({ isOpen, onClose, onDealerAdded }) {
                                 value={formData.gst_number}
                                 onChange={handleChange}
                                 placeholder="e.g., 29AAAAA0000A1Z5"
+                                maxLength="15"
                                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                             />
                         </div>
@@ -247,6 +297,21 @@ function AddDealerModal({ isOpen, onClose, onDealerAdded }) {
                                 onChange={handleChange}
                                 placeholder="e.g., sales@vendor.com"
                                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                            />
+                        </div>
+
+                        {/* Notes */}
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Notes & Procurement Details
+                            </label>
+                            <textarea
+                                name="notes"
+                                value={formData.notes}
+                                onChange={handleChange}
+                                placeholder="Terms, warranty agreements, authorized brand dealerships..."
+                                rows="2"
+                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm resize-none"
                             />
                         </div>
 
@@ -310,14 +375,30 @@ function EditDealerModal({ isOpen, onClose, dealer, onDealerUpdated }) {
         name: '',
         address: '',
         city: '',
+        state: '',
+        postal_code: '',
         contact_person: '',
         phone: '',
         email: '',
         gst_number: '',
+        notes: '',
         is_active: true
     })
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+
+    // ESC key support
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' && !loading) {
+                onClose()
+            }
+        }
+        if (isOpen) {
+            window.addEventListener('keydown', handleKeyDown)
+        }
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isOpen, loading, onClose])
 
     useEffect(() => {
         if (dealer) {
@@ -325,10 +406,13 @@ function EditDealerModal({ isOpen, onClose, dealer, onDealerUpdated }) {
                 name: dealer.name || '',
                 address: dealer.address || '',
                 city: dealer.city || '',
+                state: dealer.state || '',
+                postal_code: dealer.postal_code || '',
                 contact_person: dealer.contact_person || '',
                 phone: dealer.phone || '',
                 email: dealer.email || '',
                 gst_number: dealer.gst_number || '',
+                notes: dealer.notes || '',
                 is_active: dealer.is_active !== undefined ? Boolean(dealer.is_active) : true
             })
             setError('')
@@ -350,7 +434,7 @@ function EditDealerModal({ isOpen, onClose, dealer, onDealerUpdated }) {
         e.preventDefault()
 
         if (!formData.name.trim()) {
-            setError('Dealer Name is required')
+            setError('Dealer / Company Name is required')
             return
         }
 
@@ -399,7 +483,7 @@ function EditDealerModal({ isOpen, onClose, dealer, onDealerUpdated }) {
                         </div>
                         <div>
                             <h2 className="text-xl font-bold">Edit Dealer</h2>
-                            <p className="text-xs text-indigo-100">Update vendor details and contact information</p>
+                            <p className="text-xs text-indigo-100">Update vendor details and contact information (Press ESC to close)</p>
                         </div>
                     </div>
                     <button
@@ -428,7 +512,7 @@ function EditDealerModal({ isOpen, onClose, dealer, onDealerUpdated }) {
                         {/* Dealer Name */}
                         <div className="md:col-span-2">
                             <label className="block text-sm font-semibold text-gray-800 mb-1">
-                                Dealer Name <span className="text-red-500">*</span>
+                                Company / Dealer Name <span className="text-red-500">*</span>
                             </label>
                             <input
                                 type="text"
@@ -449,7 +533,7 @@ function EditDealerModal({ isOpen, onClose, dealer, onDealerUpdated }) {
                                 name="address"
                                 value={formData.address}
                                 onChange={handleChange}
-                                rows="3"
+                                rows="2"
                                 required
                                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm resize-none"
                             />
@@ -469,16 +553,45 @@ function EditDealerModal({ isOpen, onClose, dealer, onDealerUpdated }) {
                             />
                         </div>
 
+                        {/* State */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                State
+                            </label>
+                            <input
+                                type="text"
+                                name="state"
+                                value={formData.state}
+                                onChange={handleChange}
+                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                            />
+                        </div>
+
+                        {/* Postal Code */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Postal / PIN Code
+                            </label>
+                            <input
+                                type="text"
+                                name="postal_code"
+                                value={formData.postal_code}
+                                onChange={handleChange}
+                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                            />
+                        </div>
+
                         {/* GST Number */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                GST / Tax ID
+                                GST / Tax ID (15 chars)
                             </label>
                             <input
                                 type="text"
                                 name="gst_number"
                                 value={formData.gst_number}
                                 onChange={handleChange}
+                                maxLength="15"
                                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                             />
                         </div>
@@ -522,6 +635,20 @@ function EditDealerModal({ isOpen, onClose, dealer, onDealerUpdated }) {
                                 value={formData.email}
                                 onChange={handleChange}
                                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                            />
+                        </div>
+
+                        {/* Notes */}
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Notes & Procurement Details
+                            </label>
+                            <textarea
+                                name="notes"
+                                value={formData.notes}
+                                onChange={handleChange}
+                                rows="2"
+                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm resize-none"
                             />
                         </div>
 
@@ -585,6 +712,19 @@ function ViewDealerModal({ isOpen, onClose, dealerId }) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
 
+    // ESC key support
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                onClose()
+            }
+        }
+        if (isOpen) {
+            window.addEventListener('keydown', handleKeyDown)
+        }
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isOpen, onClose])
+
     useEffect(() => {
         if (isOpen && dealerId) {
             setLoading(true)
@@ -610,7 +750,7 @@ function ViewDealerModal({ isOpen, onClose, dealerId }) {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-100">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-100">
                 {/* Header */}
                 <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-700 px-6 py-5 text-white flex justify-between items-center">
                     <div className="flex items-center space-x-3">
@@ -621,7 +761,7 @@ function ViewDealerModal({ isOpen, onClose, dealerId }) {
                         </div>
                         <div>
                             <h2 className="text-xl font-bold">{dealer?.name || 'Dealer Details'}</h2>
-                            <p className="text-xs text-blue-100">Vendor specifications & supplied equipment</p>
+                            <p className="text-xs text-blue-100">Vendor specifications, procurement history & supplied equipment (ESC to close)</p>
                         </div>
                     </div>
                     <button
@@ -654,8 +794,10 @@ function ViewDealerModal({ isOpen, onClose, dealerId }) {
                                     </span>
                                 </div>
                                 <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3">
-                                    <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider block">City</span>
-                                    <span className="text-sm font-bold text-gray-800 mt-1 block">{dealer.city || '—'}</span>
+                                    <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider block">Location</span>
+                                    <span className="text-sm font-bold text-gray-800 mt-1 block">
+                                        {[dealer.city, dealer.state].filter(Boolean).join(', ') || '—'}
+                                    </span>
                                 </div>
                                 <div className="bg-purple-50/70 border border-purple-100 rounded-xl p-3">
                                     <span className="text-xs font-semibold text-purple-600 uppercase tracking-wider block">Equipment Count</span>
@@ -676,7 +818,7 @@ function ViewDealerModal({ isOpen, onClose, dealerId }) {
                                     Vendor & Address Details
                                 </h3>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                                     <div>
                                         <span className="text-xs text-gray-500 block">Dealer Name</span>
                                         <span className="font-semibold text-gray-800">{dealer.name}</span>
@@ -685,7 +827,11 @@ function ViewDealerModal({ isOpen, onClose, dealerId }) {
                                         <span className="text-xs text-gray-500 block">GST / Tax Number</span>
                                         <span className="font-mono text-gray-800">{dealer.gst_number || 'Not provided'}</span>
                                     </div>
-                                    <div className="md:col-span-2">
+                                    <div>
+                                        <span className="text-xs text-gray-500 block">Postal / PIN Code</span>
+                                        <span className="font-mono text-gray-800">{dealer.postal_code || '—'}</span>
+                                    </div>
+                                    <div className="md:col-span-3">
                                         <span className="text-xs text-gray-500 block">Dealer Address</span>
                                         <p className="font-medium text-gray-800 bg-white p-3 rounded-lg border border-gray-200 mt-1 whitespace-pre-wrap">
                                             {dealer.address || 'No address provided'}
@@ -699,10 +845,18 @@ function ViewDealerModal({ isOpen, onClose, dealerId }) {
                                         <span className="text-xs text-gray-500 block">Phone</span>
                                         <span className="font-medium text-gray-800">{dealer.phone || '—'}</span>
                                     </div>
-                                    <div className="md:col-span-2">
+                                    <div>
                                         <span className="text-xs text-gray-500 block">Email Address</span>
                                         <span className="font-medium text-gray-800">{dealer.email || '—'}</span>
                                     </div>
+                                    {dealer.notes && (
+                                        <div className="md:col-span-3">
+                                            <span className="text-xs text-gray-500 block">Notes & Terms</span>
+                                            <p className="font-medium text-gray-700 bg-amber-50/50 p-2.5 rounded-lg border border-amber-200 mt-1 text-xs whitespace-pre-wrap">
+                                                {dealer.notes}
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -713,18 +867,20 @@ function ViewDealerModal({ isOpen, onClose, dealerId }) {
                                         <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                                         </svg>
-                                        Equipment Supplied by this Dealer ({dealer.equipment?.length || 0})
+                                        Equipment & Purchase History ({dealer.equipment?.length || 0})
                                     </span>
                                 </h3>
 
                                 {dealer.equipment && dealer.equipment.length > 0 ? (
-                                    <div className="border border-gray-200 rounded-xl overflow-hidden max-h-52 overflow-y-auto">
+                                    <div className="border border-gray-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
                                         <table className="w-full text-xs text-left">
                                             <thead className="bg-gray-100 text-gray-600 sticky top-0">
                                                 <tr>
                                                     <th className="px-3 py-2 font-semibold">Equipment Name</th>
                                                     <th className="px-3 py-2 font-semibold">Serial No</th>
                                                     <th className="px-3 py-2 font-semibold">Brand / Model</th>
+                                                    <th className="px-3 py-2 font-semibold">Purchase Date</th>
+                                                    <th className="px-3 py-2 font-semibold">Purchase Price</th>
                                                     <th className="px-3 py-2 font-semibold">Lab</th>
                                                     <th className="px-3 py-2 font-semibold">Status</th>
                                                 </tr>
@@ -735,6 +891,10 @@ function ViewDealerModal({ isOpen, onClose, dealerId }) {
                                                         <td className="px-3 py-2 font-medium text-gray-900">{item.name}</td>
                                                         <td className="px-3 py-2 font-mono text-gray-500">{item.serial_number}</td>
                                                         <td className="px-3 py-2 text-gray-600">{item.brand || item.model || '—'}</td>
+                                                        <td className="px-3 py-2 text-gray-600">{formatDate(item.purchase_date)}</td>
+                                                        <td className="px-3 py-2 font-semibold text-gray-900">
+                                                            {item.purchase_price ? `₹${parseFloat(item.purchase_price).toLocaleString('en-IN')}` : '—'}
+                                                        </td>
                                                         <td className="px-3 py-2 text-gray-600">{item.lab?.name || 'Unassigned'}</td>
                                                         <td className="px-3 py-2">
                                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${
@@ -780,6 +940,19 @@ function ViewDealerModal({ isOpen, onClose, dealerId }) {
 function DeleteDealerModal({ isOpen, onClose, dealer, onDealerDeleted }) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+
+    // ESC key support
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape' && !loading) {
+                onClose()
+            }
+        }
+        if (isOpen) {
+            window.addEventListener('keydown', handleKeyDown)
+        }
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [isOpen, loading, onClose])
 
     if (!isOpen || !dealer) return null
 
@@ -878,12 +1051,11 @@ function DeleteDealerModal({ isOpen, onClose, dealer, onDealerDeleted }) {
 // MAIN PAGE COMPONENT: DealerMaster
 // -------------------------------------------------------------
 export default function DealerMaster() {
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [mobileOpen, setMobileOpen] = useState(false);
     const { user, isAuthenticated } = useAuth()
     const navigate = useNavigate()
     const location = useLocation()
-
-    // Navigation & Layout State
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
     // State
     const [dealers, setDealers] = useState([])
@@ -1234,6 +1406,8 @@ export default function DealerMaster() {
                 sidebarCollapsed={sidebarCollapsed}
                 setSidebarCollapsed={setSidebarCollapsed}
                 currentPath={location.pathname}
+                mobileOpen={mobileOpen}
+                setMobileOpen={setMobileOpen}
                 stats={{
                     totalDealers: stats.totalDealers
                 }}
@@ -1242,7 +1416,7 @@ export default function DealerMaster() {
             {/* Main Content Area (Properly offset so nothing is hidden behind sidebar) */}
             <div className={`flex-1 transition-all duration-300 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} flex flex-col min-w-0`}>
                 {/* Header */}
-                <AppHeader />
+                <AppHeader  onToggleMobileMenu={() => setMobileOpen(!mobileOpen)} />
 
                 {/* Sub-Header / Breadcrumb */}
                 <div className="bg-white border-b border-gray-200 px-6 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">

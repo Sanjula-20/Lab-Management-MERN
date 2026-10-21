@@ -290,12 +290,164 @@ class EmailService {
     // Test email configuration
     async testConnection() {
         try {
+            if (!this.fromEmail) {
+                return { success: false, message: 'Email user/password not configured in environment variables' };
+            }
             await this.transporter.verify();
-            console.log('✅ Email service is ready');
-            return true;
+            console.log('✅ Email service is ready and verified');
+            return { success: true, message: 'SMTP connection verified successfully' };
         } catch (error) {
-            console.error('❌ Email service configuration error:', error);
-            return false;
+            console.warn('⚠️ Email service configuration notice:', error.message);
+            return { success: false, message: error.message };
+        }
+    }
+
+    // Send a test email to verify credentials
+    async sendTestEmail(targetEmail) {
+        try {
+            if (!this.fromEmail) {
+                return { success: false, message: 'SMTP credentials (GMAIL_USER / GMAIL_APP_PASSWORD) not configured' };
+            }
+            const mailOptions = {
+                from: this.fromEmail,
+                to: targetEmail,
+                subject: '🧪 Laboratory Management System - Email Configuration Test',
+                html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 500px; border: 1px solid #e5e7eb; border-radius: 8px;">
+                    <h2 style="color: #2563eb;">🧪 Email Configuration Successful</h2>
+                    <p>This is a test notification from the Laboratory Management System.</p>
+                    <p style="color: #4b5563;">Timestamp: ${new Date().toISOString()}</p>
+                    <p style="color: #16a34a; font-weight: bold;">✅ SMTP service is actively communicating.</p>
+                </div>
+                `
+            };
+            const result = await this.transporter.sendMail(mailOptions);
+            return { success: true, messageId: result.messageId };
+        } catch (error) {
+            console.warn('⚠️ Failed to send test email:', error.message);
+            return { success: false, message: error.message };
+        }
+    }
+
+    // Automated Notification: Incident Workflow
+    async sendIncidentNotification({ to, recipientName, incident, action, actorName, notes }) {
+        if (!to) return { success: false, reason: 'No recipient email provided' };
+        try {
+            let actionTitle = 'Incident Update';
+            let actionBadge = '#3b82f6';
+            if (action === 'reported') { actionTitle = 'New Incident Reported'; actionBadge = '#ef4444'; }
+            else if (action === 'assigned') { actionTitle = 'Incident Assigned to You'; actionBadge = '#f59e0b'; }
+            else if (action === 'resolved') { actionTitle = 'Incident Resolved'; actionBadge = '#10b981'; }
+            else if (action === 'status_changed') { actionTitle = `Incident Status Changed to ${incident?.status}`; actionBadge = '#6366f1'; }
+
+            const mailOptions = {
+                from: this.fromEmail || 'no-reply@labms.local',
+                to,
+                subject: `[Incident #${incident?.id}] ${actionTitle} - ${incident?.title || ''}`,
+                html: `
+                <!DOCTYPE html>
+                <html>
+                <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f9fafb; padding: 24px; margin: 0;">
+                    <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                        <div style="background-color: ${actionBadge}; padding: 18px 24px; color: white;">
+                            <h2 style="margin: 0; font-size: 20px; font-weight: 600;">🧪 ${actionTitle}</h2>
+                            <p style="margin: 4px 0 0; opacity: 0.9; font-size: 13px;">Lab Management System Notification</p>
+                        </div>
+                        <div style="padding: 24px;">
+                            <p style="color: #374151; font-size: 15px; margin-top: 0;">Hello ${recipientName || 'User'},</p>
+                            <p style="color: #4b5563; font-size: 14px; line-height: 1.5;">
+                                An incident record has been updated by <strong>${actorName || 'System'}</strong>.
+                            </p>
+                            <div style="background-color: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 13px;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <tr><td style="padding: 4px 0; color: #6b7280; width: 130px;">Incident ID:</td><td style="font-weight: 600; color: #111827;">#${incident?.id}</td></tr>
+                                    <tr><td style="padding: 4px 0; color: #6b7280;">Title:</td><td style="font-weight: 600; color: #111827;">${incident?.title || 'N/A'}</td></tr>
+                                    <tr><td style="padding: 4px 0; color: #6b7280;">Priority:</td><td style="font-weight: 600; text-transform: uppercase; color: ${incident?.priority === 'critical' ? '#dc2626' : '#2563eb'};">${incident?.priority || 'N/A'}</td></tr>
+                                    <tr><td style="padding: 4px 0; color: #6b7280;">Current Status:</td><td style="font-weight: 600; text-transform: capitalize; color: #111827;">${incident?.status || 'N/A'}</td></tr>
+                                    ${incident?.relatedEquipment?.name ? `<tr><td style="padding: 4px 0; color: #6b7280;">Equipment:</td><td style="font-weight: 600; color: #111827;">${incident.relatedEquipment.name} (${incident.relatedEquipment.serial_number || 'N/A'})</td></tr>` : ''}
+                                    ${notes ? `<tr><td style="padding: 4px 0; color: #6b7280;">Notes:</td><td style="color: #111827;">${notes}</td></tr>` : ''}
+                                </table>
+                            </div>
+                            <div style="text-align: center; margin-top: 24px;">
+                                <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/incidents" style="background-color: #1e293b; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600; display: inline-block;">
+                                    View Incident in LabMS
+                                </a>
+                            </div>
+                        </div>
+                        <div style="background-color: #f9fafb; padding: 12px 24px; border-top: 1px solid #e5e7eb; text-align: center; color: #9ca3af; font-size: 11px;">
+                            Automated message. Please do not reply directly to this email.
+                        </div>
+                    </div>
+                </body>
+                </html>
+                `
+            };
+
+            const result = await this.transporter.sendMail(mailOptions);
+            console.log(`✅ Incident email sent to ${to} [Action: ${action}]`);
+            return { success: true, messageId: result.messageId };
+        } catch (error) {
+            console.warn(`⚠️ Incident email notification failed to ${to}:`, error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // Automated Notification: Booking Workflow
+    async sendBookingNotification({ to, recipientName, booking, action, reason }) {
+        if (!to) return { success: false, reason: 'No recipient email provided' };
+        try {
+            let actionTitle = 'Booking Status Update';
+            let actionBadge = '#3b82f6';
+            if (action === 'created') { actionTitle = 'New Booking Request'; actionBadge = '#3b82f6'; }
+            else if (action === 'approved') { actionTitle = 'Booking Approved ✅'; actionBadge = '#10b981'; }
+            else if (action === 'rejected') { actionTitle = 'Booking Rejected ❌'; actionBadge = '#ef4444'; }
+            else if (action === 'cancelled') { actionTitle = 'Booking Cancelled'; actionBadge = '#6b7280'; }
+
+            const mailOptions = {
+                from: this.fromEmail || 'no-reply@labms.local',
+                to,
+                subject: `[Booking #${booking?.id}] ${actionTitle}`,
+                html: `
+                <!DOCTYPE html>
+                <html>
+                <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f9fafb; padding: 24px; margin: 0;">
+                    <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                        <div style="background-color: ${actionBadge}; padding: 18px 24px; color: white;">
+                            <h2 style="margin: 0; font-size: 20px; font-weight: 600;">📅 ${actionTitle}</h2>
+                            <p style="margin: 4px 0 0; opacity: 0.9; font-size: 13px;">Lab Management System</p>
+                        </div>
+                        <div style="padding: 24px;">
+                            <p style="color: #374151; font-size: 15px; margin-top: 0;">Hello ${recipientName || 'User'},</p>
+                            <p style="color: #4b5563; font-size: 14px; line-height: 1.5;">
+                                Your booking request has been updated.
+                            </p>
+                            <div style="background-color: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 13px;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <tr><td style="padding: 4px 0; color: #6b7280; width: 130px;">Booking ID:</td><td style="font-weight: 600; color: #111827;">#${booking?.id}</td></tr>
+                                    <tr><td style="padding: 4px 0; color: #6b7280;">Type:</td><td style="font-weight: 600; text-transform: capitalize; color: #111827;">${booking?.booking_type || 'Lab/Equipment'}</td></tr>
+                                    <tr><td style="padding: 4px 0; color: #6b7280;">Start Time:</td><td style="color: #111827;">${booking?.start_time ? new Date(booking.start_time).toLocaleString() : 'N/A'}</td></tr>
+                                    <tr><td style="padding: 4px 0; color: #6b7280;">End Time:</td><td style="color: #111827;">${booking?.end_time ? new Date(booking.end_time).toLocaleString() : 'N/A'}</td></tr>
+                                    ${reason ? `<tr><td style="padding: 4px 0; color: #6b7280;">Reason / Remark:</td><td style="color: #dc2626;">${reason}</td></tr>` : ''}
+                                </table>
+                            </div>
+                            <div style="text-align: center; margin-top: 24px;">
+                                <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/bookings" style="background-color: #1e293b; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600; display: inline-block;">
+                                    View Bookings
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                `
+            };
+
+            const result = await this.transporter.sendMail(mailOptions);
+            console.log(`✅ Booking notification email sent to ${to}`);
+            return { success: true, messageId: result.messageId };
+        } catch (error) {
+            console.warn(`⚠️ Booking email notification failed to ${to}:`, error.message);
+            return { success: false, error: error.message };
         }
     }
 }

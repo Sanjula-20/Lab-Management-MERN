@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, checkPermission } = require('../middleware/auth');
 const { trackAccess } = require('./recentlyAccessed');
 const equipmentService = require('../services/equipmentService');
 
 router.use(authenticateToken);
 
 // GET equipment statistics
-router.get('/stats', async (req, res) => {
+router.get('/stats', checkPermission('equipment', 'view'), async (req, res) => {
     try {
         const stats = await equipmentService.getStats();
         res.json({
@@ -25,7 +25,7 @@ router.get('/stats', async (req, res) => {
 });
 
 // GET equipment status summary
-router.get('/status-summary', async (req, res) => {
+router.get('/status-summary', checkPermission('equipment', 'view'), async (req, res) => {
     try {
         const equipment = await equipmentService.getStatusSummary();
         res.json({
@@ -43,7 +43,7 @@ router.get('/status-summary', async (req, res) => {
 });
 
 // GET all equipment
-router.get('/', async (req, res) => {
+router.get('/', checkPermission('equipment', 'view'), async (req, res) => {
     try {
         const result = await equipmentService.getAllEquipment(req.query);
         res.json({
@@ -61,7 +61,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST create new equipment
-router.post('/', async (req, res) => {
+router.post('/', checkPermission('equipment', 'create'), async (req, res) => {
     try {
         console.log('📝 Creating new equipment by user:', req.user.email);
         console.log('📝 Request body:', req.body);
@@ -101,7 +101,7 @@ router.post('/', async (req, res) => {
 });
 
 // POST bulk import equipment (MUST be before /:id route)
-router.post('/bulk-import', async (req, res) => {
+router.post('/bulk-import', checkPermission('equipment', 'create'), async (req, res) => {
     console.log('📦 Bulk import request received');
     console.log('User:', req.user?.email || 'Unknown');
     console.log('Body keys:', Object.keys(req.body));
@@ -129,7 +129,7 @@ router.post('/bulk-import', async (req, res) => {
 });
 
 // GET equipment by ID
-router.get('/:id', trackAccess, async (req, res) => {
+router.get('/:id', trackAccess, checkPermission('equipment', 'view'), async (req, res) => {
     try {
         const equipment = await equipmentService.getEquipmentById(req.params.id);
         res.json({
@@ -153,7 +153,7 @@ router.get('/:id', trackAccess, async (req, res) => {
 });
 
 // PUT update equipment
-router.put('/:id', async (req, res) => {
+router.put('/:id', checkPermission('equipment', 'edit'), async (req, res) => {
     try {
         const equipment = await equipmentService.updateEquipment(
             req.params.id,
@@ -190,7 +190,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // POST batch update equipment status
-router.post('/batch-status', async (req, res) => {
+router.post('/batch-status', checkPermission('equipment', 'edit'), async (req, res) => {
     try {
         const { ids, status } = req.body;
         const result = await equipmentService.batchUpdateStatus(ids, status, req.user.userId, req.user.role);
@@ -210,7 +210,7 @@ router.post('/batch-status', async (req, res) => {
 });
 
 // POST batch delete equipment
-router.post('/batch-delete', async (req, res) => {
+router.post('/batch-delete', checkPermission('equipment', 'delete'), async (req, res) => {
     try {
         const { ids } = req.body;
         const result = await equipmentService.batchDeleteEquipment(ids, req.user.userId, req.user.role);
@@ -221,6 +221,12 @@ router.post('/batch-delete', async (req, res) => {
         });
     } catch (error) {
         console.error('Error batch deleting equipment:', error);
+        if (error.message.includes('administrators')) {
+            return res.status(403).json({
+                success: false,
+                message: error.message
+            });
+        }
         res.status(400).json({
             success: false,
             message: error.message || 'Failed to delete equipment items',
@@ -230,7 +236,7 @@ router.post('/batch-delete', async (req, res) => {
 });
 
 // DELETE equipment
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', checkPermission('equipment', 'delete'), async (req, res) => {
     try {
         await equipmentService.deleteEquipment(req.params.id, req.user.userId, req.user.role);
         res.json({
@@ -260,7 +266,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // DELETE bulk delete equipment by lab
-router.delete('/lab/:labId/bulk', async (req, res) => {
+router.delete('/lab/:labId/bulk', checkPermission('equipment', 'delete'), async (req, res) => {
     try {
         const result = await equipmentService.bulkDeleteByLab(req.params.labId, req.user.role);
         res.json({
@@ -285,52 +291,6 @@ router.delete('/lab/:labId/bulk', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to delete equipment',
-            error: error.message
-        });
-    }
-});
-
-// POST batch update status for multiple equipment
-router.post('/batch-status', async (req, res) => {
-    try {
-        const { ids, status } = req.body;
-        const result = await equipmentService.batchUpdateStatus(ids, status, req.user.userId);
-        res.json({
-            success: true,
-            message: `Successfully updated status to '${status}' for ${result.updatedCount} equipment item(s)`,
-            data: result
-        });
-    } catch (error) {
-        console.error('Error batch updating equipment status:', error);
-        res.status(400).json({
-            success: false,
-            message: error.message || 'Failed to update equipment status',
-            error: error.message
-        });
-    }
-});
-
-// POST batch delete equipment
-router.post('/batch-delete', async (req, res) => {
-    try {
-        const { ids } = req.body;
-        const result = await equipmentService.batchDeleteEquipment(ids, req.user.role);
-        res.json({
-            success: true,
-            message: `Successfully deleted ${result.deletedCount} equipment item(s)`,
-            data: result
-        });
-    } catch (error) {
-        console.error('Error batch deleting equipment:', error);
-        if (error.message.includes('administrators')) {
-            return res.status(403).json({
-                success: false,
-                message: error.message
-            });
-        }
-        res.status(400).json({
-            success: false,
-            message: error.message || 'Failed to batch delete equipment',
             error: error.message
         });
     }
